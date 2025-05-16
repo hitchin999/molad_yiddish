@@ -5,7 +5,7 @@ A custom Home Assistant integration that provides Molad (new moon) and Rosh Chod
 ## Features
 
 - **Sensor**: `sensor.molad_yiddish` with attributes:
-  - **State**: e.g., `מולד זונטאג ביינאכט, 45 מינוט און 12 חלקים נאך 4 or מולד זונטאג ביינאכט, 45 מינוט און 1 חלק נאך 4`
+  - **State**: e.g., `מולד זונטאג ביינאכט, 45 מינוט און 12 חלקים נאך 4` or `מולד זונטאג ביינאכט, 45 מינוט און 1 חלק נאך 4`
   - **month_name**: Yiddish month (e.g., `טבת`)
   - **rosh_chodesh_days**: List of Yiddish day names (e.g., `["מאנטאג", "דינסטאג"]`)
   - **rosh_chodesh_dates**: Gregorian dates (e.g., `["2025-01-01", "2025-01-02"]`)
