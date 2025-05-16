@@ -1,22 +1,13 @@
-"""
-Molad Yiddish config flow
-"""
-import voluptuous as vol
+"""Config flow for Molad Yiddish integration."""
 from homeassistant import config_entries
 
 from .const import DOMAIN
 
 class MoladYiddishConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Handle Molad Yiddish config flow."""
+    """Handle a config flow for Molad Yiddish."""
+
     VERSION = 1
 
     async def async_step_user(self, user_input=None):
-        if user_input is None:
-            return self.async_show_form(
-                step_id="user",
-                data_schema=vol.Schema({}),
-            )
-        return self.async_create_entry(
-            title="Molad (ייִדיש)",
-            data={},
-        )
+        """Handle the initial step."""
+        return self.async_create_entry(title="Molad (ייִדיש)", data={})
