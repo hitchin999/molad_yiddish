@@ -8,7 +8,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_time_interval
-from hdate.hdate import HDate, Location
+from hdate import HDate, Location
 
 _LOGGER = logging.getLogger(__name__)
 
