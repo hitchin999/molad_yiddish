@@ -7,7 +7,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_time_interval
-from hdate import HDateInfo, Location  # use HDateInfo, not HDate
+from hdate import HDateInfo  # only HDateInfo is needed now
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -63,23 +63,18 @@ class MoladYiddishSensor(SensorEntity):
         self.hass = hass
         self._attr_state = None
         self._attr_extra_state_attributes = {}
-        self._location = Location(
-            latitude=31.7683,
-            longitude=35.2137,
-            timezone="Asia/Jerusalem"
-        )
-        # Update once now and then every 24h
+        # Schedule a daily update
         async_track_time_interval(hass, self.async_update, timedelta(days=1))
     
     async def async_update(self, now: datetime | None = None) -> None:
         """Update the sensor data."""
         try:
-            # Get current Hebrew date and Molad
-            today = datetime.now()
-            hdate_now = HDateInfo(date=today, diaspora=False, location=self._location)  # ← fixed
+            # 1) Compute the Hebrew date info (no location argument)
+            today = datetime.now().date()
+            hdate_now = HDateInfo(today, diaspora=False)  # :contentReference[oaicite:0]{index=0}
             molad = hdate_now.molad
             
-            # Molad details
+            # 2) Molad details
             molad_time = molad.molad_time
             hours = molad_time.hour
             am_or_pm = "am" if hours < 12 else "pm"
@@ -87,45 +82,41 @@ class MoladYiddishSensor(SensorEntity):
             minutes = molad_time.minute
             chalakim = molad_time.chalakim
             day_yd = DAY_MAPPING.get(
-                molad_time.gdate.strftime("%A"),
-                molad_time.gdate.strftime("%A")
+                molad_time.gdate.strftime("%A"), molad_time.gdate.strftime("%A")
             )
             mon_yd = MONTH_MAPPING.get(
-                molad.hebrew_month_name,
-                molad.hebrew_month_name
+                molad.hebrew_month_name, molad.hebrew_month_name
             )
             
-            # Rosh Chodesh days and dates
+            # 3) Rosh Chodesh days and dates
             rosh_chodesh = hdate_now.rosh_chodesh
             rosh_chodesh_days: list[str] = []
             rosh_chodesh_dates: list[str] = []
             for date in rosh_chodesh:
-                # use "date" not "gdate"
-                rosh_hdate = HDateInfo(date=date, diaspora=False)  # ← fixed
+                # again, drop location
+                rosh_hdate = HDateInfo(date, diaspora=False)  # :contentReference[oaicite:1]{index=1}
                 day_name = rosh_hdate.gdate.strftime("%A")
                 rosh_chodesh_days.append(DAY_MAPPING.get(day_name, day_name))
                 rosh_chodesh_dates.append(date.strftime("%Y-%m-%d"))
             
-            # Shabbos Mevorchim logic
-            next_shabbos = hdate_now.gdate + timedelta(days=(5 - hdate_now.gdate.weekday() + 7) % 7)
+            # 4) Shabbos Mevorchim logic
+            next_shabbos = today + timedelta(days=(5 - today.weekday() + 7) % 7)
             is_shabbos_mevorchim = (
-                hdate_now.gdate.weekday() == 5
+                today.weekday() == 5
                 and any((next_shabbos + timedelta(days=1)) <= rc for rc in rosh_chodesh)
             )
             is_upcoming_shabbos_mevorchim = (
-                hdate_now.gdate.weekday() != 5
+                today.weekday() != 5
                 and any(next_shabbos <= rc <= next_shabbos + timedelta(days=6) for rc in rosh_chodesh)
             )
             
-            # Build the state string
+            # 5) Build state & attributes
             chalakim_text = "חלק" if chalakim == 1 else "חלקים"
             hour_12 = hours % 12 or 12
             self._attr_state = (
                 f"מולד {day_yd} {time_of_day}, "
                 f"{minutes} מינוט און {chalakim} {chalakim_text} נאך {hour_12}"
             )
-            
-            # Extra attributes
             self._attr_extra_state_attributes = {
                 "month_name": mon_yd,
                 "rosh_chodesh_days": rosh_chodesh_days,
