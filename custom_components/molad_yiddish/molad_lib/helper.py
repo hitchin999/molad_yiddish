@@ -5,7 +5,7 @@ Vendored MoladHelper from molad==0.0.11, patched for hdate 1.1.0:
   - Removed `import hdate.htables`
   - Use `HebrewDate.from_jdn()` instead of `jdn_to_hdate`
   - Use `Months` enum from hdate.hebrew_date
-  - Drop the unsupported `hebrew=` kwarg when constructing Zmanim
+  - Call Zmanim positionally (no `hebrew=` kwarg)
 """
 
 import datetime
@@ -72,6 +72,7 @@ class MoladHelper:
         return res
 
     def carry_and_reduce(self, out0):
+        # 1080 chalakim per hour
         xx = out0[2]
         yy = xx % 1080
         zz = xx // 1080
@@ -81,6 +82,7 @@ class MoladHelper:
         out1 = [0,0,0]
         out1[2] = yy
 
+        # 24 hours per day
         xx = out0[1] + zz
         yy = xx % 24
         zz = xx // 24
@@ -89,6 +91,7 @@ class MoladHelper:
             zz -= 1
         out1[1] = yy
 
+        # 7 days per week (1=Sunday … 7=Shabbos)
         xx = out0[0] + zz
         yy = (xx + 6) % 7 + 1
         if yy < 0:
@@ -203,8 +206,8 @@ class MoladHelper:
         j   = hdate.converters.gdate_to_jdn(date)
         h   = HebrewDate.from_jdn(j)
         hd  = h.day
--       z   = Zmanim(date=date, location=loc, hebrew=False)
-+       z   = Zmanim(date=date, location=loc)
+        # positional-only call, no kwargs
+        z   = Zmanim(date, loc)
         smd = self.get_shabbos_mevorchim_hebrew_day_of_month(date)
 
         return (
@@ -244,3 +247,4 @@ class MoladHelper:
         isum  = self.is_upcoming_shabbos_mevorchim(date)
         rc    = self.get_rosh_chodesh_days(date)
         return MoladDetails(molad, ism, isum, rc)
+      
