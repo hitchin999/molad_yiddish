@@ -66,10 +66,11 @@ class MoladYiddishSensor(SensorEntity):
         self._molad = MoladHelper(hass.config)
         self._attr_state = None
         self._attr_extra_state_attributes: dict[str, any] = {}
-        # Refresh hourly so we catch the molad moment precisely
+        # Refresh hourly to catch the molad moment
         async_track_time_interval(hass, self.async_update, timedelta(hours=1))
 
     async def async_update(self, now=None) -> None:
+        """Fetch new state data for the sensor."""
         today = date.today()
         try:
             m = self._molad.get_molad(today)
@@ -79,11 +80,11 @@ class MoladYiddishSensor(SensorEntity):
             return
 
         # Core Molad fields
-        day      = m.molad.day
-        hours    = m.molad.hours
-        minutes  = m.molad.minutes
-        chalakim = m.molad.chalakim
-        ampm     = m.molad.am_or_pm
+        day       = m.molad.day
+        hours     = m.molad.hours
+        minutes   = m.molad.minutes
+        chalakim  = m.molad.chalakim
+        ampm      = m.molad.am_or_pm
 
         # Translate into Yiddish
         day_yd   = DAY_MAPPING.get(day, day)
@@ -92,15 +93,17 @@ class MoladYiddishSensor(SensorEntity):
         chal_txt = "חלק" if chalakim == 1 else "חלקים"
         hour12   = hours % 12 or 12
 
+        # Build the human-readable state
         self._attr_state = (
             f"מולד {day_yd} {tod}, "
             f"{minutes} מינוט און {chalakim} {chal_txt} נאך {hour12}"
         )
 
-        # Rosh Chodesh
+        # Rosh Chodesh days & dates
         rc_days  = [DAY_MAPPING.get(d, d) for d in m.rosh_chodesh.days]
         rc_dates = [d.strftime("%Y-%m-%d") for d in m.rosh_chodesh.gdays]
 
+        # Extra attributes
         self._attr_extra_state_attributes = {
             "month_name":           mon_yd,
             "rosh_chodesh_days":    rc_days,
@@ -113,4 +116,5 @@ class MoladYiddishSensor(SensorEntity):
 
     @property
     def icon(self) -> str:
+        """Return the icon for the sensor."""
         return "mdi:calendar-star"
