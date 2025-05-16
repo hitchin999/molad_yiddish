@@ -46,7 +46,6 @@ TIME_OF_DAY = {
     "pm": lambda h: "נאכמיטאג" if h < 18 else "ביינאכט",
 }
 
-
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -54,7 +53,6 @@ async def async_setup_entry(
 ) -> None:
     """Set up the Molad Yiddish sensor."""
     async_add_entities([MoladYiddishSensor(hass)])
-
 
 class MoladYiddishSensor(SensorEntity):
     """Representation of a Molad Yiddish sensor."""
@@ -72,7 +70,6 @@ class MoladYiddishSensor(SensorEntity):
         async_track_time_interval(hass, self.async_update, timedelta(hours=1))
 
     async def async_update(self, now=None) -> None:
-        """Fetch new state data for the sensor."""
         today = date.today()
         try:
             m = self._molad.get_molad(today)
@@ -81,25 +78,28 @@ class MoladYiddishSensor(SensorEntity):
             self._attr_state = None
             return
 
-        day       = m.molad.day
-        hours     = m.molad.hours
-        minutes   = m.molad.minutes
-        chalakim  = m.molad.chalakim
-        ampm      = m.molad.am_or_pm
+        # Core Molad fields
+        day      = m.molad.day
+        hours    = m.molad.hours
+        minutes  = m.molad.minutes
+        chalakim = m.molad.chalakim
+        ampm     = m.molad.am_or_pm
 
-        day_yd    = DAY_MAPPING.get(day, day)
-        mon_yd    = MONTH_MAPPING.get(m.rosh_chodesh.month, m.rosh_chodesh.month)
-        tod       = TIME_OF_DAY[ampm](hours)
-        chal_text = "חלק" if chalakim == 1 else "חלקים"
-        hour12    = hours % 12 or 12
+        # Translate into Yiddish
+        day_yd   = DAY_MAPPING.get(day, day)
+        mon_yd   = MONTH_MAPPING.get(m.rosh_chodesh.month, m.rosh_chodesh.month)
+        tod      = TIME_OF_DAY[ampm](hours)
+        chal_txt = "חלק" if chalakim == 1 else "חלקים"
+        hour12   = hours % 12 or 12
 
         self._attr_state = (
             f"מולד {day_yd} {tod}, "
-            f"{minutes} מינוט און {chalakim} {chal_text} נאך {hour12}"
+            f"{minutes} מינוט און {chalakim} {chal_txt} נאך {hour12}"
         )
 
-        rc_days  = [ DAY_MAPPING.get(d, d) for d in m.rosh_chodesh.days ]
-        rc_dates = [ d.strftime("%Y-%m-%d") for d in m.rosh_chodesh.gdays ]
+        # Rosh Chodesh
+        rc_days  = [DAY_MAPPING.get(d, d) for d in m.rosh_chodesh.days]
+        rc_dates = [d.strftime("%Y-%m-%d") for d in m.rosh_chodesh.gdays]
 
         self._attr_extra_state_attributes = {
             "month_name":           mon_yd,
