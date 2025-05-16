@@ -1,11 +1,10 @@
 # custom_components/molad_yiddish/molad_lib/helper.py
 
 """
-Vendored MoladHelper from molad==0.0.11, patched for hdate 1.1.0.
-Only these three changes:
-  - Remove `import hdate.htables`
-  - Import HebrewDate
-  - Replace conv.jdn_to_hdate with HebrewDate.from_jdn
+Vendored MoladHelper from molad==0.0.11, patched for hdate 1.1.0:
+  - Removed `import hdate.htables`
+  - Use `HebrewDate.from_jdn()` instead of `jdn_to_hdate`
+  - Use `Months` enum from hdate.hebrew_date
 """
 
 import datetime
@@ -17,15 +16,14 @@ from hdate.hebrew_date import Months, HebrewDate
 from hdate import Zmanim, Location  # for Mevorchim logic
 
 
-
 class Molad:
     def __init__(self, day, hours, minutes, am_or_pm, chalakim, friendly):
-        self.day       = day
-        self.hours     = hours
-        self.minutes   = minutes
-        self.am_or_pm  = am_or_pm
-        self.chalakim  = chalakim
-        self.friendly  = friendly
+        self.day      = day
+        self.hours    = hours
+        self.minutes  = minutes
+        self.am_or_pm = am_or_pm
+        self.chalakim = chalakim
+        self.friendly = friendly
 
 class RoshChodesh:
     def __init__(self, month, text, days, gdays=None):
@@ -35,15 +33,17 @@ class RoshChodesh:
         self.gdays = gdays
 
 class MoladDetails:
-    def __init__(self,
-                 molad: Molad,
-                 is_shabbos_mevorchim: bool,
-                 is_upcoming_shabbos_mevorchim: bool,
-                 rosh_chodesh: RoshChodesh):
-        self.molad                       = molad
-        self.is_shabbos_mevorchim        = is_shabbos_mevorchim
-        self.is_upcoming_shabbos_mevorchim = is_upcoming_shabbos_mevorchim
-        self.rosh_chodesh                = rosh_chodesh
+    def __init__(
+        self,
+        molad: Molad,
+        is_shabbos_mevorchim: bool,
+        is_upcoming_shabbos_mevorchim: bool,
+        rosh_chodesh: RoshChodesh
+    ):
+        self.molad                        = molad
+        self.is_shabbos_mevorchim         = is_shabbos_mevorchim
+        self.is_upcoming_shabbos_mevorchim= is_upcoming_shabbos_mevorchim
+        self.rosh_chodesh                 = rosh_chodesh
 
 class MoladHelper:
 
@@ -90,7 +90,7 @@ class MoladHelper:
             zz -= 1
         out1[1] = yy
 
-        # 7 days per week (1–7, Sunday=1, Shabbos=7)
+        # 7 days per week (1=Sunday … 7=Shabbos)
         xx = out0[0] + zz
         yy = (xx + 6) % 7 + 1
         if yy < 0:
@@ -132,9 +132,12 @@ class MoladHelper:
         isleap = yrs in guach
 
         if isleap:
-            if month == 13: month = 6
-            elif month == 14: month = 7
-            elif month > 6: month += 1
+            if month == 13:
+                month = 6
+            elif month == 14:
+                month = 7
+            elif month > 6:
+                month += 1
 
         regular = sum(1 for i in range(yrs-1) if (i+1) not in guach)
         leap    = sum(1 for i in range(yrs-1) if (i+1) in guach)
@@ -142,16 +145,14 @@ class MoladHelper:
         return self.sumup([1, cycles, regular, leap, month-1])
 
     def get_numeric_month_year(self, date):
-        # old: j = conv.gdate_to_jdn(date)
-        # old: h = conv.jdn_to_hdate(j)
         j = hdate.converters.gdate_to_jdn(date)
-        h = HebrewDate.from_jdn(j)   # ← replaces conv.jdn_to_hdate
+        h = HebrewDate.from_jdn(j)   # ← fixed
         return {"year": h.year, "month": h.month}
 
     def get_next_numeric_month_year(self, date):
-        d      = self.get_numeric_month_year(date)
-        year   = d["year"]
-        month  = d["month"]
+        d     = self.get_numeric_month_year(date)
+        year  = d["year"]
+        month = d["month"]
         if month == 12:
             month = 1
             year += 1
@@ -173,7 +174,8 @@ class MoladHelper:
     def get_rosh_chodesh_days(self, date) -> RoshChodesh:
         this_m = self.get_numeric_month_year(date)
         next_m = self.get_next_numeric_month_year(date)
-        next_month_name = Months(next_m["month"]).name.title()  # ← enum lookup
+        # name via new Months enum
+        next_month_name = Months(next_m["month"]).name.title()
 
         if next_m["month"] == 1:
             return RoshChodesh(next_month_name, "", [], [])
@@ -202,7 +204,7 @@ class MoladHelper:
     def is_shabbos_mevorchim(self, date) -> bool:
         loc = self.get_current_location()
         j   = hdate.converters.gdate_to_jdn(date)
-        h   = hdate.converters.jdn_to_hdate(j)  # still works for HebrewDate.from_jdn if needed
+        h   = HebrewDate.from_jdn(j)  # ← fixed
         hd  = h.day
         z   = Zmanim(date=date, location=loc, hebrew=False)
         smd = self.get_shabbos_mevorchim_hebrew_day_of_month(date)
@@ -244,3 +246,4 @@ class MoladHelper:
         isum  = self.is_upcoming_shabbos_mevorchim(date)
         rc    = self.get_rosh_chodesh_days(date)
         return MoladDetails(molad, ism, isum, rc)
+      
