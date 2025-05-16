@@ -3,9 +3,8 @@
   "name": "Molad (ייִדיש)",
   "version": "0.1.0",
   "documentation": "https://github.com/hitchin999/molad_yiddish",
-  "issue_tracker": "https://github.com/hitchin999/molad_yiddish/issues",
   "requirements": ["hdate[astral]==1.1.0"],
-  "codeowners": ["@hitchin999"],
+  "codeowners": ["@your-username"],
   "iot_class": "local_polling",
-  "integration_type": "sensor"
+  "config_flow": true
 }
