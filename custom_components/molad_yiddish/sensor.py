@@ -2,13 +2,12 @@
 from __future__ import annotations
 from datetime import datetime, timedelta
 import logging
-from typing import Any
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_time_interval
-from hdate import HDateInfo, Location  # ← changed here
+from hdate import HDateInfo, Location  # use HDateInfo, not HDate
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -69,7 +68,7 @@ class MoladYiddishSensor(SensorEntity):
             longitude=35.2137,
             timezone="Asia/Jerusalem"
         )
-        # Schedule daily updates at midnight
+        # Update once now and then every 24h
         async_track_time_interval(hass, self.async_update, timedelta(days=1))
     
     async def async_update(self, now: datetime | None = None) -> None:
@@ -77,8 +76,7 @@ class MoladYiddishSensor(SensorEntity):
         try:
             # Get current Hebrew date and Molad
             today = datetime.now()
-            # ← use HDateInfo instead of HDate
-            hdate_now = HDateInfo(gdate=today, diaspora=False, location=self._location)
+            hdate_now = HDateInfo(date=today, diaspora=False, location=self._location)  # ← fixed
             molad = hdate_now.molad
             
             # Molad details
@@ -102,7 +100,8 @@ class MoladYiddishSensor(SensorEntity):
             rosh_chodesh_days: list[str] = []
             rosh_chodesh_dates: list[str] = []
             for date in rosh_chodesh:
-                rosh_hdate = HDateInfo(gdate=date, diaspora=False)
+                # use "date" not "gdate"
+                rosh_hdate = HDateInfo(date=date, diaspora=False)  # ← fixed
                 day_name = rosh_hdate.gdate.strftime("%A")
                 rosh_chodesh_days.append(DAY_MAPPING.get(day_name, day_name))
                 rosh_chodesh_dates.append(date.strftime("%Y-%m-%d"))
@@ -118,13 +117,15 @@ class MoladYiddishSensor(SensorEntity):
                 and any(next_shabbos <= rc <= next_shabbos + timedelta(days=6) for rc in rosh_chodesh)
             )
             
-            # Update state and attributes
+            # Build the state string
             chalakim_text = "חלק" if chalakim == 1 else "חלקים"
             hour_12 = hours % 12 or 12
             self._attr_state = (
                 f"מולד {day_yd} {time_of_day}, "
                 f"{minutes} מינוט און {chalakim} {chalakim_text} נאך {hour_12}"
             )
+            
+            # Extra attributes
             self._attr_extra_state_attributes = {
                 "month_name": mon_yd,
                 "rosh_chodesh_days": rosh_chodesh_days,
@@ -141,4 +142,3 @@ class MoladYiddishSensor(SensorEntity):
     def icon(self) -> str:
         """Return the icon for the sensor."""
         return "mdi:calendar-star"
-            
