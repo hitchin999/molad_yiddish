@@ -1,12 +1,13 @@
 """Sensor platform for Molad Yiddish integration."""
 from __future__ import annotations
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 from typing import Any
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.event import async_track_time_interval
 from hdate import HDate, Location
 
 _LOGGER = logging.getLogger(__name__)
@@ -50,7 +51,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Molad Yiddish sensor."""
-    async_add_entities([MoladYiddishSensor()])
+    async_add_entities([MoladYiddishSensor(hass)])
 
 class MoladYiddishSensor(SensorEntity):
     """Representation of a Molad Yiddish sensor."""
@@ -58,13 +59,16 @@ class MoladYiddishSensor(SensorEntity):
     _attr_name = "Molad (ייִדיש)"
     _attr_unique_id = "molad_yiddish_sensor"
     
-    def __init__(self) -> None:
+    def __init__(self, hass: HomeAssistant) -> None:
         """Initialize the sensor."""
+        self.hass = hass
         self._attr_state = None
         self._attr_extra_state_attributes = {}
         self._location = Location(latitude=31.7683, longitude=35.2137, timezone="Asia/Jerusalem")
+        # Schedule daily updates at midnight
+        async_track_time_interval(hass, self.async_update, timedelta(days=1))
     
-    async def async_update(self) -> None:
+    async def async_update(self, now=None) -> None:
         """Update the sensor data."""
         try:
             # Get current Hebrew date and Molad
@@ -93,11 +97,13 @@ class MoladYiddishSensor(SensorEntity):
                 rosh_chodesh_dates.append(date.strftime("%Y-%m-%d"))
             
             # Shabbos Mevorchim logic
-            is_shabbos_mevorchim = hdate_now.gdate.weekday() == 5 and hdate_now.hebrew_day >= 23
-            is_upcoming_shabbos_mevorchim = hdate_now.hebrew_day >= 16 and hdate_now.gdate.weekday() != 5
+            next_shabbos = hdate_now.gdate + timedelta(days=(5 - hdate_now.gdate.weekday() + 7) % 7)
+            is_shabbos_mevorchim = hdate_now.gdate.weekday() == 5 and any((next_shabbos + timedelta(days=1)) <= rc for rc in rosh_chodesh)
+            is_upcoming_shabbos_mevorchim = hdate_now.gdate.weekday() != 5 and any(next_shabbos <= rc <= next_shabbos + timedelta(days=6) for rc in rosh_chodesh)
             
             # Update state and attributes
-            self._attr_state = f"מולד {day_yd} {time_of_day}, {minutes} מינוט און {chalakim} חלקים"
+            chalakim_text = "חלק" if chalakim == 1 else "חלקים"
+            self._attr_state = f"מולד {day_yd} {time_of_day}, {minutes} מינוט און {chalakim} {chalakim_text} נאך {hours % 12 or 12}"
             self._attr_extra_state_attributes = {
                 "month_name": mon_yd,
                 "rosh_chodesh_days": rosh_chodesh_days,
