@@ -9,7 +9,6 @@ won't try to pip-install anything.
 
 # original imports (patch out any `import hdate.htables` if broken)
 import datetime
-import hdate.htables  # if the vendored code used this, leave it
 
 class MoladHelper:
     def __init__(self, config):
