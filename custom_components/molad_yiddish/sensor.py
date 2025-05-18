@@ -18,6 +18,8 @@ from .molad_lib.helper import MoladHelper, MoladDetails
 
 _LOGGER = logging.getLogger(__name__)
 
+# ———————————————————————————————————————————————
+# Yiddish mappings
 DAY_MAPPING = {
     "Sunday":    "זונטאג",
     "Monday":    "מאנטאג",
@@ -40,6 +42,7 @@ TIME_OF_DAY = {
     "am": lambda h: "פארטאגס" if h < 6 else "צופרי",
     "pm": lambda h: "נאכמיטאג" if h < 18 else "ביינאכט",
 }
+# ———————————————————————————————————————————————
 
 
 async def async_setup_entry(
@@ -47,6 +50,7 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities,
 ) -> None:
+    """Set up Molad Yiddish sensors."""
     helper = MoladHelper(hass.config)
     async_add_entities(
         [
@@ -60,6 +64,8 @@ async def async_setup_entry(
 
 
 class MoladYiddishSensor(SensorEntity):
+    """Main Molad (ייִדיש) sensor."""
+
     _attr_name = "Molad Yiddish"
     _attr_unique_id = "molad_yiddish"
     _attr_entity_id = "sensor.molad_yiddish"
@@ -74,12 +80,13 @@ class MoladYiddishSensor(SensorEntity):
     async def async_update(self, now=None) -> None:
         today = date.today()
         try:
-            m = self.helper.get_molad(today)
+            m: MoladDetails = self.helper.get_molad(today)
         except Exception as e:
             _LOGGER.error("Molad update failed: %s", e)
             self._attr_state = None
             return
 
+        # Build Yiddish Molad state
         day_yd   = DAY_MAPPING[m.molad.day]
         h, mi    = m.molad.hours, m.molad.minutes
         ap       = m.molad.am_or_pm
@@ -90,6 +97,7 @@ class MoladYiddishSensor(SensorEntity):
         state_str = f"מולד {day_yd} {tod}, {mi} מינוט און {chal} {chal_txt} נאך {hh12}"
         self._attr_state = state_str
 
+        # Astral & timezone setup
         loc = LocationInfo(
             name="home",
             region="",
@@ -99,9 +107,14 @@ class MoladYiddishSensor(SensorEntity):
         )
         tz = ZoneInfo(self.hass.config.time_zone)
 
-        rc_midnight = [f"{gd.isoformat()}T00:00:00Z" for gd in m.rosh_chodesh.gdays]
+        # R”Ch UTC-midnight (for DevTools)
+        rc_midnight = [
+            f"{gd.isoformat()}T00:00:00Z"
+            for gd in m.rosh_chodesh.gdays
+        ]
 
-        rc_nightfall = []
+        # R”Ch true nightfall+72m on the **previous** day
+        rc_nightfall: list[str] = []
         for gd in m.rosh_chodesh.gdays:
             prev_day = gd - timedelta(days=1)
             s = sun(loc.observer, date=prev_day, tzinfo=tz)
@@ -135,6 +148,8 @@ class MoladYiddishSensor(SensorEntity):
 
 
 class ShabbosMevorchimSensor(BinarySensorEntity):
+    """Binary sensor: is *today* Shabbos Mevorchim?"""
+
     _attr_name = "Shabbos Mevorchim Yiddish"
     _attr_unique_id = "shabbos_mevorchim_yiddish"
     _attr_entity_id = "binary_sensor.shabbos_mevorchim_yiddish"
@@ -158,6 +173,8 @@ class ShabbosMevorchimSensor(BinarySensorEntity):
 
 
 class UpcomingShabbosMevorchimSensor(BinarySensorEntity):
+    """Binary sensor: is the *upcoming* Shabbos Mevorchim?"""
+
     _attr_name = "Upcoming Shabbos Mevorchim Yiddish"
     _attr_unique_id = "upcoming_shabbos_mevorchim_yiddish"
     _attr_entity_id = "binary_sensor.upcoming_shabbos_mevorchim_yiddish"
@@ -181,7 +198,7 @@ class UpcomingShabbosMevorchimSensor(BinarySensorEntity):
 
 
 class RoshChodeshTodaySensor(SensorEntity):
-    """“ראש חודש היום” once nightfall+72m has passed."""
+    """Sensor: “ראש חודש היום” once nightfall+72m has passed."""
 
     _attr_name = "Rosh Chodesh Today Yiddish"
     _attr_unique_id = "rosh_chodesh_today_yiddish"
@@ -190,13 +207,16 @@ class RoshChodeshTodaySensor(SensorEntity):
     def __init__(self, hass: HomeAssistant, helper: MoladHelper) -> None:
         self.hass = hass
         self.helper = helper
-        # set a default so it’s never Unknown
+        # set a non-None default immediately
         self._attr_state = "Not Rosh Chodesh Today"
+        # re-evaluate every minute
         async_track_time_interval(hass, self.async_update, timedelta(minutes=1))
+        # schedule the first run
+        hass.async_create_task(self.async_update())
 
-    async def async_added_to_hass(self) -> None:
-        """Run one update as soon as the entity is added."""
-        await self.async_update()
+    def update(self) -> None:
+        """Make update_before_add=True actually call our async_update."""
+        self.hass.async_create_task(self.async_update())
 
     async def async_update(self, now_arg=None) -> None:
         today = date.today()
@@ -214,6 +234,7 @@ class RoshChodeshTodaySensor(SensorEntity):
         )
         tz = ZoneInfo(self.hass.config.time_zone)
 
+        # calculate previous-day nightfall+72m for each R”Ch date
         nightfalls: list[datetime] = []
         for gd in details.rosh_chodesh.gdays:
             prev_day = gd - timedelta(days=1)
