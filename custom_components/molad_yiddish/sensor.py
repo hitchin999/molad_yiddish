@@ -18,7 +18,6 @@ from .molad_lib.helper import MoladHelper, MoladDetails
 
 _LOGGER = logging.getLogger(__name__)
 
-# Yiddish mappings
 DAY_MAPPING = {
     "Sunday":    "זונטאג",
     "Monday":    "מאנטאג",
@@ -48,7 +47,6 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities,
 ) -> None:
-    """Set up Molad Yiddish sensors (4 total)."""
     helper = MoladHelper(hass.config)
     async_add_entities(
         [
@@ -62,8 +60,6 @@ async def async_setup_entry(
 
 
 class MoladYiddishSensor(SensorEntity):
-    """Main Molad (ייִדיש) sensor."""
-
     _attr_name = "Molad Yiddish"
     _attr_unique_id = "molad_yiddish"
     _attr_entity_id = "sensor.molad_yiddish"
@@ -78,13 +74,13 @@ class MoladYiddishSensor(SensorEntity):
     async def async_update(self, now=None) -> None:
         today = date.today()
         try:
-            m: MoladDetails = self.helper.get_molad(today)
+            m = self.helper.get_molad(today)
         except Exception as e:
             _LOGGER.error("Molad update failed: %s", e)
             self._attr_state = None
             return
 
-        # Build Yiddish state
+        # Build Yiddish Molad string
         day_yd   = DAY_MAPPING[m.molad.day]
         h, mi    = m.molad.hours, m.molad.minutes
         ap       = m.molad.am_or_pm
@@ -95,22 +91,17 @@ class MoladYiddishSensor(SensorEntity):
         state_str = f"מולד {day_yd} {tod}, {mi} מינוט און {chal} {chal_txt} נאך {hh12}"
         self._attr_state = state_str
 
-        # Astral setup
+        # Astral + timezone
         loc = LocationInfo(
-            name="home",
-            region="",
-            timezone=self.hass.config.time_zone,
-            latitude=self.hass.config.latitude,
-            longitude=self.hass.config.longitude,
+            name="home", region="", timezone=self.hass.config.time_zone,
+            latitude=self.hass.config.latitude, longitude=self.hass.config.longitude,
         )
         tz = ZoneInfo(self.hass.config.time_zone)
 
-        # UTC-midnight for DevTools
-        rc_midnight = [
-            f"{gd.isoformat()}T00:00:00Z" for gd in m.rosh_chodesh.gdays
-        ]
+        # UTC‐midnight R”Ch (DevTools)
+        rc_midnight = [f"{gd.isoformat()}T00:00:00Z" for gd in m.rosh_chodesh.gdays]
 
-        # True nightfall+72m on previous day
+        # nightfall+72m on the **previous** day
         rc_nightfall = []
         for gd in m.rosh_chodesh.gdays:
             prev_day = gd - timedelta(days=1)
@@ -145,8 +136,6 @@ class MoladYiddishSensor(SensorEntity):
 
 
 class ShabbosMevorchimSensor(BinarySensorEntity):
-    """Binary sensor: is *today* Shabbos Mevorchim?"""
-
     _attr_name = "Shabbos Mevorchim Yiddish"
     _attr_unique_id = "shabbos_mevorchim_yiddish"
     _attr_entity_id = "binary_sensor.shabbos_mevorchim_yiddish"
@@ -170,8 +159,6 @@ class ShabbosMevorchimSensor(BinarySensorEntity):
 
 
 class UpcomingShabbosMevorchimSensor(BinarySensorEntity):
-    """Binary sensor: is the *upcoming* Shabbos Mevorchim?"""
-
     _attr_name = "Upcoming Shabbos Mevorchim Yiddish"
     _attr_unique_id = "upcoming_shabbos_mevorchim_yiddish"
     _attr_entity_id = "binary_sensor.upcoming_shabbos_mevorchim_yiddish"
@@ -195,7 +182,7 @@ class UpcomingShabbosMevorchimSensor(BinarySensorEntity):
 
 
 class RoshChodeshTodaySensor(SensorEntity):
-    """Sensor: “ראש חודש היום” once nightfall+72 minutes has passed."""
+    """“ראש חודש היום” once nightfall+72m has passed."""
 
     _attr_name = "Rosh Chodesh Today Yiddish"
     _attr_unique_id = "rosh_chodesh_today_yiddish"
@@ -204,34 +191,34 @@ class RoshChodeshTodaySensor(SensorEntity):
     def __init__(self, hass: HomeAssistant, helper: MoladHelper) -> None:
         self.hass = hass
         self.helper = helper
-        self._attr_state = None
-        # re-evaluate every minute
+        # initialize to a non-None string
+        self._attr_state = "Not Rosh Chodesh Today"
+        # recheck every minute
         async_track_time_interval(hass, self.async_update, timedelta(minutes=1))
-        # immediate initial update so you never see Unknown
-        hass.async_create_task(self.async_update())
+        # immediately populate
+        self.update()
+
+    def update(self) -> None:
+        """Kick off async_update so we never stay Unknown."""
+        self.hass.async_create_task(self.async_update())
 
     async def async_update(self, now_arg=None) -> None:
         today = date.today()
         try:
-            details: MoladDetails = self.helper.get_molad(today)
+            details = self.helper.get_molad(today)
         except Exception as e:
-            _LOGGER.error("RoshChodeshToday update failed: %s", e)
-            self._attr_state = None
+            _LOGGER.error("R”Ch Today update failed: %s", e)
             return
 
         month = MONTH_MAPPING[details.rosh_chodesh.month]
 
-        # Astral + timezone
         loc = LocationInfo(
-            name="home",
-            region="",
-            timezone=self.hass.config.time_zone,
-            latitude=self.hass.config.latitude,
-            longitude=self.hass.config.longitude,
+            name="home", region="", timezone=self.hass.config.time_zone,
+            latitude=self.hass.config.latitude, longitude=self.hass.config.longitude,
         )
         tz = ZoneInfo(self.hass.config.time_zone)
 
-        # compute nightfalls on the previous day for each R”Ch
+        # compute nightfalls on previous day
         nightfalls: list[datetime] = []
         for gd in details.rosh_chodesh.gdays:
             prev_day = gd - timedelta(days=1)
@@ -240,19 +227,17 @@ class RoshChodeshTodaySensor(SensorEntity):
             nightfalls.append(nf)
 
         now_local = dt_now()
-
-        # default state
-        state = "Not Rosh Chodesh Today"
+        new_state = "Not Rosh Chodesh Today"
         for idx, nf in enumerate(nightfalls):
             if now_local >= nf and now_local < nf + timedelta(days=1):
                 if len(nightfalls) == 1:
-                    state = f"ראש חודש {month}"
+                    new_state = f"ראש חודש {month}"
                 else:
                     prefix = ["א", "ב"][idx]
-                    state = f"{prefix}׳ ד׳ראש חודש {month}"
+                    new_state = f"{prefix}׳ ד׳ראש חודש {month}"
                 break
 
-        self._attr_state = state
+        self._attr_state = new_state
 
     @property
     def icon(self) -> str:
