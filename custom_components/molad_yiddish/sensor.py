@@ -5,6 +5,7 @@ import logging
 from datetime import date, timedelta
 
 from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.event import async_track_time_interval
@@ -54,6 +55,8 @@ async def async_setup_entry(
 
 
 class MoladYiddishSensor(SensorEntity):
+    """Main Molad (ייִדיש) sensor."""
+
     _attr_name = "Molad Yiddish"
     _attr_unique_id = "molad_yiddish"
     _attr_entity_id = "sensor.molad_yiddish"
@@ -63,7 +66,7 @@ class MoladYiddishSensor(SensorEntity):
         self.helper = helper
         self._attr_state = None
         self._attr_extra_state_attributes: dict[str, any] = {}
-        # Schedule an immediate + hourly update
+        # Updates immediately on add, then hourly
         async_track_time_interval(hass, self.async_update, timedelta(hours=1))
 
     async def async_update(self, now=None) -> None:
@@ -75,7 +78,7 @@ class MoladYiddishSensor(SensorEntity):
             self._attr_state = None
             return
 
-        # Build the Yiddish state string
+        # Build the Yiddish main state
         day_yd   = DAY_MAPPING[m.molad.day]
         h, mi    = m.molad.hours, m.molad.minutes
         ap       = m.molad.am_or_pm
@@ -87,16 +90,15 @@ class MoladYiddishSensor(SensorEntity):
         state_str = f"מולד {day_yd} {tod}, {mi} מינוט און {chal} {chal_txt} נאך {hh12}"
         self._attr_state = state_str
 
-        # R”Ch days (translated) & dates (as strings!)
+        # R”Ch days & dates as local ISO-8601 timestamps
         rc_en    = m.rosh_chodesh.days
         rc_yd    = [DAY_MAPPING[d] for d in rc_en]
-        rc_dates = [d.strftime("%Y-%m-%d") for d in m.rosh_chodesh.gdays]
+        rc_dates = [f"{d.strftime('%Y-%m-%d')}T00:00:00" for d in m.rosh_chodesh.gdays]
         rc_text  = rc_yd[0] if len(rc_yd) == 1 else " & ".join(rc_yd)
 
-        # Yiddish month name
+        # Month in Yiddish
         mon_yd = MONTH_MAPPING[m.rosh_chodesh.month]
 
-        # All attributes in Yiddish + boolean flags
         self._attr_extra_state_attributes = {
             "day":                           day_yd,
             "hours":                         h,
@@ -114,7 +116,7 @@ class MoladYiddishSensor(SensorEntity):
         }
 
     def update(self) -> None:
-        """Legacy sync update (so update_before_add actually fires)."""
+        """Legacy sync update so update_before_add actually fires."""
         self.hass.async_create_task(self.async_update())
 
     @property
@@ -122,26 +124,28 @@ class MoladYiddishSensor(SensorEntity):
         return "mdi:calendar-star"
 
 
-class ShabbosMevorchimSensor(SensorEntity):
+class ShabbosMevorchimSensor(BinarySensorEntity):
+    """Binary sensor: is *today* Shabbos Mevorchim?"""
+
     _attr_name = "Shabbos Mevorchim Yiddish"
     _attr_unique_id = "shabbos_mevorchim_yiddish"
-    _attr_entity_id = "sensor.shabbos_mevorchim_yiddish"
+    _attr_entity_id = "binary_sensor.shabbos_mevorchim_yiddish"
 
     def __init__(self, hass: HomeAssistant, helper: MoladHelper) -> None:
         self.hass = hass
         self.helper = helper
-        self._attr_state = None
+        self._attr_is_on = False
         async_track_time_interval(hass, self.async_update, timedelta(hours=1))
 
     async def async_update(self, now=None) -> None:
         try:
-            self._attr_state = self.helper.get_molad(date.today()).is_shabbos_mevorchim
+            self._attr_is_on = self.helper.get_molad(date.today()).is_shabbos_mevorchim
         except Exception as e:
             _LOGGER.error("Shabbos Mevorchim failed: %s", e)
-            self._attr_state = False
+            self._attr_is_on = False
 
     def update(self) -> None:
-        """Legacy sync update."""
+        """Legacy sync update so update_before_add actually fires."""
         self.hass.async_create_task(self.async_update())
 
     @property
@@ -149,26 +153,28 @@ class ShabbosMevorchimSensor(SensorEntity):
         return "mdi:star-outline"
 
 
-class UpcomingShabbosMevorchimSensor(SensorEntity):
+class UpcomingShabbosMevorchimSensor(BinarySensorEntity):
+    """Binary sensor: is the *upcoming* Shabbos Mevorchim?"""
+
     _attr_name = "Upcoming Shabbos Mevorchim Yiddish"
     _attr_unique_id = "upcoming_shabbos_mevorchim_yiddish"
-    _attr_entity_id = "sensor.upcoming_shabbos_mevorchim_yiddish"
+    _attr_entity_id = "binary_sensor.upcoming_shabbos_mevorchim_yiddish"
 
     def __init__(self, hass: HomeAssistant, helper: MoladHelper) -> None:
         self.hass = hass
         self.helper = helper
-        self._attr_state = None
+        self._attr_is_on = False
         async_track_time_interval(hass, self.async_update, timedelta(hours=1))
 
     async def async_update(self, now=None) -> None:
         try:
-            self._attr_state = self.helper.get_molad(date.today()).is_upcoming_shabbos_mevorchim
+            self._attr_is_on = self.helper.get_molad(date.today()).is_upcoming_shabbos_mevorchim
         except Exception as e:
             _LOGGER.error("Upcoming Shabbos Mevorchim failed: %s", e)
-            self._attr_state = False
+            self._attr_is_on = False
 
     def update(self) -> None:
-        """Legacy sync update."""
+        """Legacy sync update so update_before_add actually fires."""
         self.hass.async_create_task(self.async_update())
 
     @property
