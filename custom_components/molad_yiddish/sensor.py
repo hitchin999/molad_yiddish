@@ -7,6 +7,7 @@ from datetime import date, timedelta
 from astral import LocationInfo
 from astral.sun import sun
 from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.event import async_track_time_interval
@@ -25,24 +26,13 @@ DAY_MAPPING = {
     "Friday":    "פרייטאג",
     "Shabbos":   "שבת",
 }
-
 MONTH_MAPPING = {
-    "Tishri":   "תשרי",
-    "Cheshvan": "חשוון",
-    "Kislev":   "כסלו",
-    "Tevet":    "טבת",
-    "Shvat":    "שבט",
-    "Adar":     "אדר",
-    "Adar I":   "אדר א",
-    "Adar II":  "אדר ב",
-    "Nissan":   "ניסן",
-    "Iyar":     "אייר",
-    "Sivan":    "סיון",
-    "Tammuz":   "תמוז",
-    "Av":       "אב",
-    "Elul":     "אלול",
+    "Tishri":   "תשרי",   "Cheshvan": "חשוון", "Kislev":   "כסלו",
+    "Tevet":    "טבת",     "Shvat":    "שבט",    "Adar":     "אדר",
+    "Adar I":   "אדר א",   "Adar II":  "אדר ב",  "Nissan":   "ניסן",
+    "Iyar":     "אייר",    "Sivan":    "סיון",   "Tammuz":   "תמוז",
+    "Av":       "אב",      "Elul":     "אלול",
 }
-
 TIME_OF_DAY = {
     "am": lambda h: "פארטאגס" if h < 6 else "צופרי",
     "pm": lambda h: "נאכמיטאג" if h < 18 else "ביינאכט",
@@ -78,7 +68,6 @@ class MoladYiddishSensor(SensorEntity):
         self.helper = helper
         self._attr_state = None
         self._attr_extra_state_attributes: dict[str, any] = {}
-        # update on start + hourly
         async_track_time_interval(hass, self.async_update, timedelta(hours=1))
 
     async def async_update(self, now=None) -> None:
@@ -90,7 +79,7 @@ class MoladYiddishSensor(SensorEntity):
             self._attr_state = None
             return
 
-        # Build Yiddish-only state string
+        # Build Yiddish state string
         day_yd   = DAY_MAPPING[m.molad.day]
         h, mi    = m.molad.hours, m.molad.minutes
         ap       = m.molad.am_or_pm
@@ -102,7 +91,7 @@ class MoladYiddishSensor(SensorEntity):
         state_str = f"מולד {day_yd} {tod}, {mi} מינוט און {chal} {chal_txt} נאך {hh12}"
         self._attr_state = state_str
 
-        # Compute nightfall = sunset + 72 minutes
+        # Prepare Astral location
         loc = LocationInfo(
             name="home",
             region="",
@@ -110,12 +99,14 @@ class MoladYiddishSensor(SensorEntity):
             latitude=self.hass.config.latitude,
             longitude=self.hass.config.longitude,
         )
+
+        # Compute R”Ch days & nightfall‐72min
         rc_yd    = [DAY_MAPPING[d] for d in m.rosh_chodesh.days]
         rc_dates = []
         for gdate in m.rosh_chodesh.gdays:
             s = sun(loc.observer, date=gdate)
             nightfall = s["sunset"] + timedelta(minutes=72)
-            # local‐aware ISO string e.g. "2025-05-27T20:15:00-04:00"
+            # local‐aware ISO e.g. "2025-05-27T20:15:00-04:00"
             rc_dates.append(nightfall.isoformat())
 
         rc_text = rc_yd[0] if len(rc_yd) == 1 else " & ".join(rc_yd)
@@ -146,30 +137,27 @@ class MoladYiddishSensor(SensorEntity):
         return "mdi:calendar-star"
 
 
-class ShabbosMevorchimSensor(SensorEntity):
-    """Sensor for “Is today Shabbos Mevorchim?”"""
+class ShabbosMevorchimSensor(BinarySensorEntity):
+    """Binary sensor: is *today* Shabbos Mevorchim?"""
 
     _attr_name = "Shabbos Mevorchim Yiddish"
     _attr_unique_id = "shabbos_mevorchim_yiddish"
-    _attr_entity_id = "sensor.shabbos_mevorchim_yiddish"
+    _attr_entity_id = "binary_sensor.shabbos_mevorchim_yiddish"
 
     def __init__(self, hass: HomeAssistant, helper: MoladHelper) -> None:
         self.hass = hass
         self.helper = helper
-        self._attr_state = None
+        self._attr_is_on = False
         async_track_time_interval(hass, self.async_update, timedelta(hours=1))
 
     async def async_update(self, now=None) -> None:
         try:
-            val = self.helper.get_molad(date.today()).is_shabbos_mevorchim
-            # SensorEntity needs a string
-            self._attr_state = "true" if val else "false"
+            self._attr_is_on = self.helper.get_molad(date.today()).is_shabbos_mevorchim
         except Exception as e:
             _LOGGER.error("Shabbos Mevorchim failed: %s", e)
-            self._attr_state = "false"
+            self._attr_is_on = False
 
     def update(self) -> None:
-        """Legacy sync update so update_before_add actually fires."""
         self.hass.async_create_task(self.async_update())
 
     @property
@@ -177,29 +165,27 @@ class ShabbosMevorchimSensor(SensorEntity):
         return "mdi:star-outline"
 
 
-class UpcomingShabbosMevorchimSensor(SensorEntity):
-    """Sensor for “Is upcoming Shabbos Mevorchim?”"""
+class UpcomingShabbosMevorchimSensor(BinarySensorEntity):
+    """Binary sensor: is the *upcoming* Shabbos Mevorchim?"""
 
     _attr_name = "Upcoming Shabbos Mevorchim Yiddish"
     _attr_unique_id = "upcoming_shabbos_mevorchim_yiddish"
-    _attr_entity_id = "sensor.upcoming_shabbos_mevorchim_yiddish"
+    _attr_entity_id = "binary_sensor.upcoming_shabbos_mevorchim_yiddish"
 
     def __init__(self, hass: HomeAssistant, helper: MoladHelper) -> None:
         self.hass = hass
         self.helper = helper
-        self._attr_state = None
+        self._attr_is_on = False
         async_track_time_interval(hass, self.async_update, timedelta(hours=1))
 
     async def async_update(self, now=None) -> None:
         try:
-            val = self.helper.get_molad(date.today()).is_upcoming_shabbos_mevorchim
-            self._attr_state = "true" if val else "false"
+            self._attr_is_on = self.helper.get_molad(date.today()).is_upcoming_shabbos_mevorchim
         except Exception as e:
             _LOGGER.error("Upcoming Shabbos Mevorchim failed: %s", e)
-            self._attr_state = "false"
+            self._attr_is_on = False
 
     def update(self) -> None:
-        """Legacy sync update so update_before_add actually fires."""
         self.hass.async_create_task(self.async_update())
 
     @property
