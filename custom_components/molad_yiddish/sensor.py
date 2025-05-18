@@ -9,7 +9,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.event import async_track_time_interval
 
-from .molad_lib.helper import MoladHelper
+from .molad_lib.helper import MoladHelper, MoladDetails
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -19,7 +19,7 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities,
 ) -> None:
-    """Set up Molad Yiddish with three sensors."""
+    """Set up the three Molad Yiddish sensors."""
     helper = MoladHelper(hass.config)
     async_add_entities(
         [
@@ -39,7 +39,6 @@ class MoladYiddishSensor(SensorEntity):
     _attr_entity_id = "sensor.molad_yiddish"
 
     def __init__(self, hass: HomeAssistant, helper: MoladHelper) -> None:
-        """Initialize the Molad sensor."""
         self.hass = hass
         self.helper = helper
         self._attr_state = None
@@ -48,10 +47,9 @@ class MoladYiddishSensor(SensorEntity):
         async_track_time_interval(hass, self.async_update, timedelta(hours=1))
 
     async def async_update(self, now=None) -> None:
-        """Fetch Molad and update state+attributes."""
         today = date.today()
         try:
-            m = self.helper.get_molad(today)
+            m: MoladDetails = self.helper.get_molad(today)
         except Exception as e:
             _LOGGER.error("Failed to compute Molad: %s", e)
             self._attr_state = None
@@ -89,17 +87,15 @@ class ShabbosMevorchimSensor(SensorEntity):
     _attr_entity_id = "sensor.shabbos_mevorchim_yiddish"
 
     def __init__(self, hass: HomeAssistant, helper: MoladHelper) -> None:
-        """Initialize the Shabbos Mevorchim sensor."""
         self.hass = hass
         self.helper = helper
         self._attr_state = None
         async_track_time_interval(hass, self.async_update, timedelta(hours=1))
 
     async def async_update(self, now=None) -> None:
-        """Fetch and update whether today is Shabbos Mevorchim."""
         today = date.today()
         try:
-            m = self.helper.get_molad(today)
+            m: MoladDetails = self.helper.get_molad(today)
             self._attr_state = m.is_shabbos_mevorchim
         except Exception as e:
             _LOGGER.error("Failed to compute Shabbos Mevorchim: %s", e)
@@ -118,17 +114,15 @@ class UpcomingShabbosMevorchimSensor(SensorEntity):
     _attr_entity_id = "sensor.upcoming_shabbos_mevorchim_yiddish"
 
     def __init__(self, hass: HomeAssistant, helper: MoladHelper) -> None:
-        """Initialize the Upcoming Shabbos Mevorchim sensor."""
         self.hass = hass
         self.helper = helper
         self._attr_state = None
         async_track_time_interval(hass, self.async_update, timedelta(hours=1))
 
     async def async_update(self, now=None) -> None:
-        """Fetch and update whether the upcoming Shabbos is Mevorchim."""
         today = date.today()
         try:
-            m = self.helper.get_molad(today)
+            m: MoladDetails = self.helper.get_molad(today)
             self._attr_state = m.is_upcoming_shabbos_mevorchim
         except Exception as e:
             _LOGGER.error("Failed to compute Upcoming Shabbos Mevorchim: %s", e)
