@@ -3,6 +3,7 @@
 from __future__ import annotations
 import logging
 from datetime import date, timedelta
+from zoneinfo import ZoneInfo
 
 from astral import LocationInfo
 from astral.sun import sun
@@ -16,7 +17,6 @@ from .molad_lib.helper import MoladHelper, MoladDetails
 
 _LOGGER = logging.getLogger(__name__)
 
-# Yiddish translations
 DAY_MAPPING = {
     "Sunday":    "זונטאג",
     "Monday":    "מאנטאג",
@@ -46,7 +46,6 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities,
 ) -> None:
-    """Set up Molad Yiddish sensors."""
     helper = MoladHelper(hass.config)
     async_add_entities(
         [
@@ -59,8 +58,6 @@ async def async_setup_entry(
 
 
 class MoladYiddishSensor(SensorEntity):
-    """Main Molad (ייִדיש) sensor."""
-
     _attr_name = "Molad Yiddish"
     _attr_unique_id = "molad_yiddish"
     _attr_entity_id = "sensor.molad_yiddish"
@@ -81,7 +78,7 @@ class MoladYiddishSensor(SensorEntity):
             self._attr_state = None
             return
 
-        # 1) Build the Yiddish Molad state string
+        # Build the Molad state string
         day_yd   = DAY_MAPPING[m.molad.day]
         h, mi    = m.molad.hours, m.molad.minutes
         ap       = m.molad.am_or_pm
@@ -92,7 +89,7 @@ class MoladYiddishSensor(SensorEntity):
         state_str = f"מולד {day_yd} {tod}, {mi} מינוט און {chal} {chal_txt} נאך {hh12}"
         self._attr_state = state_str
 
-        # 2) Prepare UTC-midnight & true local nightfall+72m for R”Ch
+        # location & timezone
         loc = LocationInfo(
             name="home",
             region="",
@@ -100,25 +97,26 @@ class MoladYiddishSensor(SensorEntity):
             latitude=self.hass.config.latitude,
             longitude=self.hass.config.longitude,
         )
+        tz = ZoneInfo(self.hass.config.time_zone)
 
-        # raw UTC‐midnight (always the 'correct' Hebrew day)
+        # 1) Raw UTC‐midnight for DevTools
         rc_midnight = [
             f"{gd.isoformat()}T00:00:00Z"
             for gd in m.rosh_chodesh.gdays
         ]
 
-        # actual nightfall+72m in local zone
+        # 2) True nightfall = sunset+72m on the *previous* day
         rc_nightfall: list[str] = []
         for gd in m.rosh_chodesh.gdays:
-            s = sun(loc.observer, date=gd, tzinfo=loc.timezone)
+            prev_day = gd - timedelta(days=1)
+            s = sun(loc.observer, date=prev_day, tzinfo=tz)
             nf = s["sunset"] + timedelta(minutes=72)
             rc_nightfall.append(nf.isoformat())
 
         rc_yd  = [DAY_MAPPING[d] for d in m.rosh_chodesh.days]
-        rc_text= rc_yd[0] if len(rc_yd)==1 else " & ".join(rc_yd)
+        rc_text= rc_yd[0] if len(rc_yd) == 1 else " & ".join(rc_yd)
         mon_yd = MONTH_MAPPING[m.rosh_chodesh.month]
 
-        # 3) Publish attributes
         self._attr_extra_state_attributes = {
             "day":                            day_yd,
             "hours":                          h,
@@ -127,9 +125,7 @@ class MoladYiddishSensor(SensorEntity):
             "time_of_day":                    tod,
             "chalakim":                       chal,
             "friendly":                       state_str,
-            # Developer Tools: correct Hebrew day
             "rosh_chodesh_midnight":          rc_midnight,
-            # Entity panel: true nightfall +72m
             "rosh_chodesh_nightfall":         rc_nightfall,
             "rosh_chodesh":                   rc_text,
             "rosh_chodesh_days":              rc_yd,
@@ -139,7 +135,6 @@ class MoladYiddishSensor(SensorEntity):
         }
 
     def update(self) -> None:
-        """Legacy sync update so update_before_add fires immediately."""
         self.hass.async_create_task(self.async_update())
 
     @property
@@ -148,8 +143,6 @@ class MoladYiddishSensor(SensorEntity):
 
 
 class ShabbosMevorchimSensor(BinarySensorEntity):
-    """Binary sensor: is *today* Shabbos Mevorchim?"""
-
     _attr_name = "Shabbos Mevorchim Yiddish"
     _attr_unique_id = "shabbos_mevorchim_yiddish"
     _attr_entity_id = "binary_sensor.shabbos_mevorchim_yiddish"
@@ -175,9 +168,7 @@ class ShabbosMevorchimSensor(BinarySensorEntity):
         return "mdi:star-outline"
 
 
-class UpcomingShabbosMevorchimSensor(BinarySensorEntity):
-    """Binary sensor: is the *upcoming* Shabbos Mevorchim?"""
-
+class UpcomingShabbosMevorchimSensor(Binary_SENSOR_ENTITY):
     _attr_name = "Upcoming Shabbos Mevorchim Yiddish"
     _attr_unique_id = "upcoming_shabbos_mevorchim_yiddish"
     _attr_entity_id = "binary_sensor.upcoming_shabbos_mevorchim_yiddish"
