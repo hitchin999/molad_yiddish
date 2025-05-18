@@ -8,6 +8,7 @@ Vendored MoladHelper from molad==0.0.11, patched for hdate 1.1.0:
   - Call Zmanim positionally (no 'hebrew=' kwarg)
   - Compute Shabbos Mevorchim date on the actual last day of the month
   - Replace hdate.converters.hdate_to_jdn(...) with HebrewDate.to_jdn()
+  - Replace hdate.HDate(...) with HebrewDate.from_gdate()
 """
 
 import datetime
@@ -43,10 +44,10 @@ class MoladDetails:
         is_upcoming_shabbos_mevorchim: bool,
         rosh_chodesh: RoshChodesh
     ):
-        self.molad                        = molad
-        self.is_shabbos_mevorchim         = is_shabbos_mevorchim
-        self.is_upcoming_shabbos_mevorchim= is_upcoming_shabbos_mevorchim
-        self.rosh_chodesh                 = rosh_chodesh
+        self.molad                         = molad
+        self.is_shabbos_mevorchim          = is_shabbos_mevorchim
+        self.is_upcoming_shabbos_mevorchim = is_upcoming_shabbos_mevorchim
+        self.rosh_chodesh                  = rosh_chodesh
 
 class MoladHelper:
 
@@ -125,10 +126,10 @@ class MoladHelper:
         return Molad(daynm, hours, minutes, pm, chalakim, friendly)
 
     def get_actual_molad(self, date):
-        d     = self.get_next_numeric_month_year(date)
-        year  = d["year"]
-        month = d["month"]
-        guach = [3,6,8,11,14,17,19]
+        d      = self.get_next_numeric_month_year(date)
+        year   = d["year"]
+        month  = d["month"]
+        guach  = [3,6,8,11,14,17,19]
 
         cycles = year // 19
         yrs    = year % 19
@@ -157,8 +158,7 @@ class MoladHelper:
         year  = d["year"]
         month = d["month"]
         if month == 12:
-            month = 1
-            year += 1
+            month, year = 1, year + 1
         elif month == 14:
             month = 7
         else:
@@ -166,9 +166,8 @@ class MoladHelper:
         return {"year": year, "month": month}
 
     def get_gdate(self, numeric_date, day):
-        # replaced converters.hdate_to_jdn(...) with to_jdn()
         hd  = hdate.HebrewDate(numeric_date["year"], numeric_date["month"], day)
-        jdn = hd.to_jdn()
+        jdn = hd.to_jdn()  # use HebrewDate.to_jdn()
         return hdate.converters.jdn_to_gdate(jdn)
 
     def get_day_of_week(self, gdate):
@@ -183,7 +182,6 @@ class MoladHelper:
         if next_m["month"] == 1:
             return RoshChodesh(next_month_name, "", [], [])
 
-        # find length of THIS Hebrew month
         month_enum = Months(this_m["month"])
         length = month_enum.days(this_m["year"]) if callable(month_enum.days) else month_enum.length
 
@@ -203,17 +201,17 @@ class MoladHelper:
         return RoshChodesh(next_month_name, text, days_list, gdays)
 
     def get_shabbos_mevorchim_english_date(self, date):
-        this_m = self.get_numeric_month_year(date)
+        this_m     = self.get_numeric_month_year(date)
         month_enum = Months(this_m["month"])
-        length = month_enum.days(this_m["year"]) if callable(month_enum.days) else month_enum.length
-        g1     = self.get_gdate(this_m, length)
-        idx    = (g1.weekday() + 1) % 7
+        length     = month_enum.days(this_m["year"]) if callable(month_enum.days) else month_enum.length
+        g1         = self.get_gdate(this_m, length)
+        idx        = (g1.weekday() + 1) % 7
         return g1 - datetime.timedelta(days=(7 + idx - 6))
 
     def get_shabbos_mevorchim_hebrew_day_of_month(self, date):
-        g    = self.get_shabbos_mevorchim_english_date(date)
-        j    = hdate.converters.gdate_to_jdn(g)
-        hd   = HebrewDate.from_jdn(j)
+        g  = self.get_shabbos_mevorchim_english_date(date)
+        j  = hdate.converters.gdate_to_jdn(g)
+        hd = HebrewDate.from_jdn(j)
         return hd.day
 
     def is_shabbos_mevorchim(self, date) -> bool:
@@ -236,11 +234,9 @@ class MoladHelper:
         return self.is_shabbos_mevorchim(sat)
 
     def is_actual_shabbat(self, z) -> bool:
-        today    = hdate.HDate(gdate=z.date, diaspora=z.location.diaspora)
-        tomorrow = hdate.HDate(
-            gdate=z.date + datetime.timedelta(days=1),
-            diaspora=z.location.diaspora
-        )
+        # replaced hdate.HDate with HebrewDate.from_gdate
+        today    = HebrewDate.from_gdate(z.date)
+        tomorrow = HebrewDate.from_gdate(z.date + datetime.timedelta(days=1))
         if today.is_shabbat and z.havdalah and z.time < z.havdalah:
             return True
         if tomorrow.is_shabbat and z.candle_lighting and z.time >= z.candle_lighting:
@@ -261,3 +257,4 @@ class MoladHelper:
         isum  = self.is_upcoming_shabbos_mevorchim(date)
         rc    = self.get_rosh_chodesh_days(date)
         return MoladDetails(molad, ism, isum, rc)
+      
