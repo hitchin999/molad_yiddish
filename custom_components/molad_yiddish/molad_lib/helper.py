@@ -7,6 +7,7 @@ Vendored MoladHelper from molad==0.0.11, patched for hdate 1.1.0:
   - Use Months enum from hdate.hebrew_date
   - Call Zmanim positionally (no 'hebrew=' kwarg)
   - Compute Shabbos Mevorchim date on the actual last day of the month
+  - Replace hdate.converters.hdate_to_jdn(...) with HebrewDate.to_jdn()
 """
 
 import datetime
@@ -156,7 +157,8 @@ class MoladHelper:
         year  = d["year"]
         month = d["month"]
         if month == 12:
-            month, year = 1, year + 1
+            month = 1
+            year += 1
         elif month == 14:
             month = 7
         else:
@@ -164,8 +166,9 @@ class MoladHelper:
         return {"year": year, "month": month}
 
     def get_gdate(self, numeric_date, day):
+        # replaced converters.hdate_to_jdn(...) with to_jdn()
         hd  = hdate.HebrewDate(numeric_date["year"], numeric_date["month"], day)
-        jdn = hdate.converters.hdate_to_jdn(hd)
+        jdn = hd.to_jdn()
         return hdate.converters.jdn_to_gdate(jdn)
 
     def get_day_of_week(self, gdate):
@@ -187,29 +190,24 @@ class MoladHelper:
         days_list = []
         gdays     = []
 
-        # include 30th day only if this month actually has 30 days
         if length >= 30:
             g1 = self.get_gdate(this_m, 30)
             days_list.append(self.get_day_of_week(g1))
             gdays.append(g1)
 
-        # always include day 1 of the next month
         g2 = self.get_gdate(next_m, 1)
         days_list.append(self.get_day_of_week(g2))
         gdays.append(g2)
 
-        # build display text
         text = " & ".join(days_list) if len(days_list) == 2 else days_list[0]
         return RoshChodesh(next_month_name, text, days_list, gdays)
 
     def get_shabbos_mevorchim_english_date(self, date):
         this_m = self.get_numeric_month_year(date)
-        # figure out the last day of THIS month
         month_enum = Months(this_m["month"])
         length = month_enum.days(this_m["year"]) if callable(month_enum.days) else month_enum.length
-        # use the actual last day, not hard-coded 30
-        g1 = self.get_gdate(this_m, length)
-        idx = (g1.weekday() + 1) % 7
+        g1     = self.get_gdate(this_m, length)
+        idx    = (g1.weekday() + 1) % 7
         return g1 - datetime.timedelta(days=(7 + idx - 6))
 
     def get_shabbos_mevorchim_hebrew_day_of_month(self, date):
@@ -263,4 +261,3 @@ class MoladHelper:
         isum  = self.is_upcoming_shabbos_mevorchim(date)
         rc    = self.get_rosh_chodesh_days(date)
         return MoladDetails(molad, ism, isum, rc)
-      
