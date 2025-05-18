@@ -30,7 +30,7 @@ A custom Home Assistant integration that provides Molad (new moon) and Rosh Chod
 4. Click **Add**, then find `Molad Yiddish` in HACS > Integrations.
 5. Click **Download** and follow prompts to install.
 6. Restart Home Assistant (Settings > System > Restart).
-7. Add the integration via **Settings > Devices & Services > Add Integration > Molad Yoddish**.
+7. Add the integration via **Settings > Devices & Services > Add Integration > Molad Yiddish**.
 
 ### Manual Installation
 
