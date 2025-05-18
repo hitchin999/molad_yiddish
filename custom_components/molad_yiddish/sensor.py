@@ -18,7 +18,7 @@ from .molad_lib.helper import MoladHelper, MoladDetails
 
 _LOGGER = logging.getLogger(__name__)
 
-# Translations
+# Yiddish mappings
 DAY_MAPPING = {
     "Sunday":    "זונטאג",
     "Monday":    "מאנטאג",
@@ -28,6 +28,7 @@ DAY_MAPPING = {
     "Friday":    "פרייטאג",
     "Shabbos":   "שבת",
 }
+
 MONTH_MAPPING = {
     "Tishri":   "תשרי",   "Cheshvan": "חשוון", "Kislev":   "כסלו",
     "Tevet":    "טבת",     "Shvat":    "שבט",    "Adar":     "אדר",
@@ -35,6 +36,7 @@ MONTH_MAPPING = {
     "Iyar":     "אייר",    "Sivan":    "סיון",   "Tammuz":   "תמוז",
     "Av":       "אב",      "Elul":     "אלול",
 }
+
 TIME_OF_DAY = {
     "am": lambda h: "פארטאגס" if h < 6 else "צופרי",
     "pm": lambda h: "נאכמיטאג" if h < 18 else "ביינאכט",
@@ -93,7 +95,7 @@ class MoladYiddishSensor(SensorEntity):
         state_str = f"מולד {day_yd} {tod}, {mi} מינוט און {chal} {chal_txt} נאך {hh12}"
         self._attr_state = state_str
 
-        # Prepare location/timezone
+        # Astral setup
         loc = LocationInfo(
             name="home",
             region="",
@@ -103,13 +105,12 @@ class MoladYiddishSensor(SensorEntity):
         )
         tz = ZoneInfo(self.hass.config.time_zone)
 
-        # R”Ch UTC‐midnight
+        # UTC-midnight for DevTools
         rc_midnight = [
-            f"{gd.isoformat()}T00:00:00Z"
-            for gd in m.rosh_chodesh.gdays
+            f"{gd.isoformat()}T00:00:00Z" for gd in m.rosh_chodesh.gdays
         ]
 
-        # R”Ch true nightfall+72m (previous day)
+        # True nightfall+72m on previous day
         rc_nightfall = []
         for gd in m.rosh_chodesh.gdays:
             prev_day = gd - timedelta(days=1)
@@ -118,28 +119,25 @@ class MoladYiddishSensor(SensorEntity):
             rc_nightfall.append(nf.isoformat())
 
         rc_yd  = [DAY_MAPPING[d] for d in m.rosh_chodesh.days]
-        rc_text= rc_yd[0] if len(rc_yd) == 1 else " & ".join(rc_yd)
-        mon_yd = MONTH_MAPPING[m.rosh_chodesh.month]
+        rc_text = rc_yd[0] if len(rc_yd) == 1 else " & ".join(rc_yd)
+        mon_yd  = MONTH_MAPPING[m.rosh_chodesh.month]
 
         self._attr_extra_state_attributes = {
-            "day":                            day_yd,
-            "hours":                          h,
-            "minutes":                        mi,
-            "am_or_pm":                       ap,
-            "time_of_day":                    tod,
-            "chalakim":                       chal,
-            "friendly":                       state_str,
-            "rosh_chodesh_midnight":          rc_midnight,
-            "rosh_chodesh_nightfall":         rc_nightfall,
-            "rosh_chodesh":                   rc_text,
-            "rosh_chodesh_days":              rc_yd,
-            "is_shabbos_mevorchim":           m.is_shabbos_mevorchim,
-            "is_upcoming_shabbos_mevorchim":  m.is_upcoming_shabbos_mevorchim,
-            "month_name":                     mon_yd,
+            "day":                           day_yd,
+            "hours":                         h,
+            "minutes":                       mi,
+            "am_or_pm":                      ap,
+            "time_of_day":                   tod,
+            "chalakim":                      chal,
+            "friendly":                      state_str,
+            "rosh_chodesh_midnight":         rc_midnight,
+            "rosh_chodesh_nightfall":        rc_nightfall,
+            "rosh_chodesh":                  rc_text,
+            "rosh_chodesh_days":             rc_yd,
+            "is_shabbos_mevorchim":          m.is_shabbos_mevorchim,
+            "is_upcoming_shabbos_mevorchim": m.is_upcoming_shabbos_mevorchim,
+            "month_name":                    mon_yd,
         }
-
-    def update(self) -> None:
-        self.hass.async_create_task(self.async_update())
 
     @property
     def icon(self) -> str:
@@ -166,9 +164,6 @@ class ShabbosMevorchimSensor(BinarySensorEntity):
             _LOGGER.error("Shabbos Mevorchim failed: %s", e)
             self._attr_is_on = False
 
-    def update(self) -> None:
-        self.hass.async_create_task(self.async_update())
-
     @property
     def icon(self) -> str:
         return "mdi:star-outline"
@@ -194,16 +189,13 @@ class UpcomingShabbosMevorchimSensor(BinarySensorEntity):
             _LOGGER.error("Upcoming Shabbos Mevorchim failed: %s", e)
             self._attr_is_on = False
 
-    def update(self) -> None:
-        self.hass.async_create_task(self.async_update())
-
     @property
     def icon(self) -> str:
         return "mdi:star-outline"
 
 
 class RoshChodeshTodaySensor(SensorEntity):
-    """Sensor: “ראש חודש היום” once nightfall+72m has passed."""
+    """Sensor: “ראש חודש היום” once nightfall+72 minutes has passed."""
 
     _attr_name = "Rosh Chodesh Today Yiddish"
     _attr_unique_id = "rosh_chodesh_today_yiddish"
@@ -213,14 +205,23 @@ class RoshChodeshTodaySensor(SensorEntity):
         self.hass = hass
         self.helper = helper
         self._attr_state = None
+        # re-evaluate every minute
         async_track_time_interval(hass, self.async_update, timedelta(minutes=1))
+        # immediate initial update so you never see Unknown
+        hass.async_create_task(self.async_update())
 
     async def async_update(self, now_arg=None) -> None:
         today = date.today()
-        details = self.helper.get_molad(today)
+        try:
+            details: MoladDetails = self.helper.get_molad(today)
+        except Exception as e:
+            _LOGGER.error("RoshChodeshToday update failed: %s", e)
+            self._attr_state = None
+            return
+
         month = MONTH_MAPPING[details.rosh_chodesh.month]
 
-        # build nightfall list on previous day
+        # Astral + timezone
         loc = LocationInfo(
             name="home",
             region="",
@@ -230,6 +231,7 @@ class RoshChodeshTodaySensor(SensorEntity):
         )
         tz = ZoneInfo(self.hass.config.time_zone)
 
+        # compute nightfalls on the previous day for each R”Ch
         nightfalls: list[datetime] = []
         for gd in details.rosh_chodesh.gdays:
             prev_day = gd - timedelta(days=1)
@@ -239,6 +241,7 @@ class RoshChodeshTodaySensor(SensorEntity):
 
         now_local = dt_now()
 
+        # default state
         state = "Not Rosh Chodesh Today"
         for idx, nf in enumerate(nightfalls):
             if now_local >= nf and now_local < nf + timedelta(days=1):
@@ -250,9 +253,6 @@ class RoshChodeshTodaySensor(SensorEntity):
                 break
 
         self._attr_state = state
-
-    def update(self) -> None:
-        self.hass.async_create_task(self.async_update())
 
     @property
     def icon(self) -> str:
