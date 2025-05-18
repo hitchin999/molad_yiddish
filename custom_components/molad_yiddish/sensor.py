@@ -4,6 +4,8 @@ from __future__ import annotations
 import logging
 from datetime import date, timedelta
 
+from astral import LocationInfo
+from astral.sun import sun
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.config_entries import ConfigEntry
@@ -66,7 +68,7 @@ class MoladYiddishSensor(SensorEntity):
         self.helper = helper
         self._attr_state = None
         self._attr_extra_state_attributes: dict[str, any] = {}
-        # Updates immediately on add, then hourly
+        # Update immediately, then hourly
         async_track_time_interval(hass, self.async_update, timedelta(hours=1))
 
     async def async_update(self, now=None) -> None:
@@ -78,7 +80,7 @@ class MoladYiddishSensor(SensorEntity):
             self._attr_state = None
             return
 
-        # Build the Yiddish main state
+        # Build Molad state in Yiddish
         day_yd   = DAY_MAPPING[m.molad.day]
         h, mi    = m.molad.hours, m.molad.minutes
         ap       = m.molad.am_or_pm
@@ -90,14 +92,26 @@ class MoladYiddishSensor(SensorEntity):
         state_str = f"מולד {day_yd} {tod}, {mi} מינוט און {chal} {chal_txt} נאך {hh12}"
         self._attr_state = state_str
 
-        # R”Ch days & dates as local ISO-8601 timestamps
+        # Determine nightfall for each R”Ch date:
+        loc = LocationInfo(
+            name="home",
+            region="",
+            timezone=self.hass.config.time_zone,
+            latitude=self.hass.config.latitude,
+            longitude=self.hass.config.longitude,
+        )
+
         rc_en    = m.rosh_chodesh.days
         rc_yd    = [DAY_MAPPING[d] for d in rc_en]
-        rc_dates = [f"{d.strftime('%Y-%m-%d')}T00:00:00" for d in m.rosh_chodesh.gdays]
-        rc_text  = rc_yd[0] if len(rc_yd) == 1 else " & ".join(rc_yd)
+        rc_dates = []
+        for gdate in m.rosh_chodesh.gdays:
+            s = sun(loc.observer, date=gdate)
+            nightfall = s["sunset"] + timedelta(minutes=72)
+            # produce an ISO timestamp with offset, e.g. "2025-05-27T20:15:00-04:00"
+            rc_dates.append(nightfall.isoformat())
 
-        # Month in Yiddish
-        mon_yd = MONTH_MAPPING[m.rosh_chodesh.month]
+        rc_text = rc_yd[0] if len(rc_yd) == 1 else " & ".join(rc_yd)
+        mon_yd  = MONTH_MAPPING[m.rosh_chodesh.month]
 
         self._attr_extra_state_attributes = {
             "day":                           day_yd,
@@ -116,7 +130,7 @@ class MoladYiddishSensor(SensorEntity):
         }
 
     def update(self) -> None:
-        """Legacy sync update so update_before_add actually fires."""
+        """Legacy sync update so update_before_add fires immediately."""
         self.hass.async_create_task(self.async_update())
 
     @property
@@ -145,7 +159,7 @@ class ShabbosMevorchimSensor(BinarySensorEntity):
             self._attr_is_on = False
 
     def update(self) -> None:
-        """Legacy sync update so update_before_add actually fires."""
+        """Legacy sync update so update_before_add fires immediately."""
         self.hass.async_create_task(self.async_update())
 
     @property
@@ -174,7 +188,7 @@ class UpcomingShabbosMevorchimSensor(BinarySensorEntity):
             self._attr_is_on = False
 
     def update(self) -> None:
-        """Legacy sync update so update_before_add actually fires."""
+        """Legacy sync update so update_before_add fires immediately."""
         self.hass.async_create_task(self.async_update())
 
     @property
