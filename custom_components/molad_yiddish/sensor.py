@@ -13,16 +13,17 @@ from .molad_lib.helper import MoladHelper, MoladDetails
 
 _LOGGER = logging.getLogger(__name__)
 
-# Translations for Yiddish output
+# Yiddish translations
 DAY_MAPPING = {
-    "Sunday":   "זונטאג",
-    "Monday":   "מאנטאג",
-    "Tuesday":  "דינסטאג",
-    "Wednesday":"מיטוואך",
-    "Thursday": "דאנערשטאג",
-    "Friday":   "פרייטאג",
-    "Shabbos":  "שבת",
+    "Sunday":    "זונטאג",
+    "Monday":    "מאנטאג",
+    "Tuesday":   "דינסטאג",
+    "Wednesday": "מיטוואך",
+    "Thursday":  "דאנערשטאג",
+    "Friday":    "פרייטאג",
+    "Shabbos":   "שבת",
 }
+
 MONTH_MAPPING = {
     "Tishri":   "תשרי",
     "Cheshvan": "חשוון",
@@ -39,6 +40,7 @@ MONTH_MAPPING = {
     "Av":       "אב",
     "Elul":     "אלול",
 }
+
 TIME_OF_DAY = {
     "am": lambda h: "פארטאגס" if h < 6 else "צופרי",
     "pm": lambda h: "נאכמיטאג" if h < 18 else "ביינאכט",
@@ -50,7 +52,7 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities,
 ) -> None:
-    """Set up the three Molad Yiddish sensors."""
+    """Set up Molad Yiddish sensors."""
     helper = MoladHelper(hass.config)
     async_add_entities(
         [
@@ -63,7 +65,7 @@ async def async_setup_entry(
 
 
 class MoladYiddishSensor(SensorEntity):
-    """The main Molad Yiddish sensor."""
+    """Molad (ייִדיש) sensor."""
 
     _attr_name = "Molad Yiddish"
     _attr_unique_id = "molad_yiddish"
@@ -73,8 +75,8 @@ class MoladYiddishSensor(SensorEntity):
         self.hass = hass
         self.helper = helper
         self._attr_state = None
-        self._attr_extra_state_attributes = {}
-        # Update immediately on add, then every hour
+        self._attr_extra_state_attributes: dict[str, any] = {}
+        # update on start + hourly
         async_track_time_interval(hass, self.async_update, timedelta(hours=1))
 
     async def async_update(self, now=None) -> None:
@@ -86,10 +88,9 @@ class MoladYiddishSensor(SensorEntity):
             self._attr_state = None
             return
 
-        # Build the Yiddish state string
+        # Build Yiddish‐only state string
         day_yd   = DAY_MAPPING[m.molad.day]
-        h        = m.molad.hours
-        mi       = m.molad.minutes
+        h, mi    = m.molad.hours, m.molad.minutes
         ap       = m.molad.am_or_pm
         tod      = TIME_OF_DAY[ap](h)
         chal     = m.molad.chalakim
@@ -100,15 +101,19 @@ class MoladYiddishSensor(SensorEntity):
         self._attr_state = state_str
 
         # R”Ch days & dates
-        rc_en   = m.rosh_chodesh.days
-        rc_yd   = [DAY_MAPPING[d] for d in rc_en]
-        rc_dates= [gd.strftime("%Y-%m-%d") for gd in m.rosh_chodesh.gdays]
-        rc_text = " & ".join(rc_yd) if len(rc_yd) == 2 else (rc_yd[0] if rc_yd else "")
+        rc_en    = m.rosh_chodesh.days
+        rc_yd    = [DAY_MAPPING[d] for d in rc_en]
+        # FULL UTC‐timestamp to prevent local rollback
+        rc_dates = [f"{d.isoformat()}T00:00:00Z" for d in m.rosh_chodesh.gdays]
+        rc_text  = (
+            " & ".join(rc_yd)
+            if len(rc_yd) == 2
+            else (rc_yd[0] if rc_yd else "")
+        )
 
         # Yiddish month
         mon_yd = MONTH_MAPPING[m.rosh_chodesh.month]
 
-        # Expose **all** attributes in Yiddish
         self._attr_extra_state_attributes = {
             "day":                           day_yd,
             "hours":                         h,
@@ -125,13 +130,17 @@ class MoladYiddishSensor(SensorEntity):
             "month_name":                    mon_yd,
         }
 
+    def update(self) -> None:
+        """Legacy sync update so update_before_add actually fires."""
+        self.hass.async_create_task(self.async_update())
+
     @property
     def icon(self) -> str:
         return "mdi:calendar-star"
 
 
 class ShabbosMevorchimSensor(SensorEntity):
-    """Sensor: is **today** Shabbos Mevorchim?"""
+    """Sensor for “Is today Shabbos Mevorchim?”"""
 
     _attr_name = "Shabbos Mevorchim Yiddish"
     _attr_unique_id = "shabbos_mevorchim_yiddish"
@@ -150,13 +159,17 @@ class ShabbosMevorchimSensor(SensorEntity):
             _LOGGER.error("Shabbos Mevorchim failed: %s", e)
             self._attr_state = False
 
+    def update(self) -> None:
+        """Legacy sync update so update_before_add actually fires."""
+        self.hass.async_create_task(self.async_update())
+
     @property
     def icon(self) -> str:
         return "mdi:star-outline"
 
 
 class UpcomingShabbosMevorchimSensor(SensorEntity):
-    """Sensor: is the **upcoming** Shabbos Mevorchim?"""
+    """Sensor for “Is upcoming Shabbos Mevorchim?”"""
 
     _attr_name = "Upcoming Shabbos Mevorchim Yiddish"
     _attr_unique_id = "upcoming_shabbos_mevorchim_yiddish"
@@ -175,7 +188,10 @@ class UpcomingShabbosMevorchimSensor(SensorEntity):
             _LOGGER.error("Upcoming Shabbos Mevorchim failed: %s", e)
             self._attr_state = False
 
+    def update(self) -> None:
+        """Legacy sync update so update_before_add actually fires."""
+        self.hass.async_create_task(self.async_update())
+
     @property
     def icon(self) -> str:
         return "mdi:star-outline"
-            
