@@ -86,7 +86,7 @@ class MoladYiddishSensor(SensorEntity):
             self._attr_state = None
             return
 
-        # Build Yiddish Molad state
+        # Build Molad string
         day_yd   = DAY_MAPPING[m.molad.day]
         h, mi    = m.molad.hours, m.molad.minutes
         ap       = m.molad.am_or_pm
@@ -97,7 +97,7 @@ class MoladYiddishSensor(SensorEntity):
         state_str = f"מולד {day_yd} {tod}, {mi} מינוט און {chal} {chal_txt} נאך {hh12}"
         self._attr_state = state_str
 
-        # Astral & timezone setup
+        # Astral & timezone
         loc = LocationInfo(
             name="home",
             region="",
@@ -107,13 +107,13 @@ class MoladYiddishSensor(SensorEntity):
         )
         tz = ZoneInfo(self.hass.config.time_zone)
 
-        # R”Ch UTC-midnight (for DevTools)
+        # R”Ch UTC-midnight (DevTools)
         rc_midnight = [
             f"{gd.isoformat()}T00:00:00Z"
             for gd in m.rosh_chodesh.gdays
         ]
 
-        # R”Ch true nightfall+72m on the **previous** day
+        # R”Ch nightfall+72m on previous day
         rc_nightfall: list[str] = []
         for gd in m.rosh_chodesh.gdays:
             prev_day = gd - timedelta(days=1)
@@ -148,7 +148,7 @@ class MoladYiddishSensor(SensorEntity):
 
 
 class ShabbosMevorchimSensor(BinarySensorEntity):
-    """Binary sensor: is *today* Shabbos Mevorchim?"""
+    """Is *today* Shabbos Mevorchim?"""
 
     _attr_name = "Shabbos Mevorchim Yiddish"
     _attr_unique_id = "shabbos_mevorchim_yiddish"
@@ -173,7 +173,7 @@ class ShabbosMevorchimSensor(BinarySensorEntity):
 
 
 class UpcomingShabbosMevorchimSensor(BinarySensorEntity):
-    """Binary sensor: is the *upcoming* Shabbos Mevorchim?"""
+    """Is the *upcoming* Shabbos Mevorchim?"""
 
     _attr_name = "Upcoming Shabbos Mevorchim Yiddish"
     _attr_unique_id = "upcoming_shabbos_mevorchim_yiddish"
@@ -198,7 +198,7 @@ class UpcomingShabbosMevorchimSensor(BinarySensorEntity):
 
 
 class RoshChodeshTodaySensor(SensorEntity):
-    """Sensor: “ראש חודש היום” once nightfall+72m has passed."""
+    """“ראש חודש היום” once nightfall+72m has passed."""
 
     _attr_name = "Rosh Chodesh Today Yiddish"
     _attr_unique_id = "rosh_chodesh_today_yiddish"
@@ -207,15 +207,15 @@ class RoshChodeshTodaySensor(SensorEntity):
     def __init__(self, hass: HomeAssistant, helper: MoladHelper) -> None:
         self.hass = hass
         self.helper = helper
-        # set a non-None default immediately
+        # default so it’s never None
         self._attr_state = "Not Rosh Chodesh Today"
         # re-evaluate every minute
         async_track_time_interval(hass, self.async_update, timedelta(minutes=1))
-        # schedule the first run
+        # kick-off first run
         hass.async_create_task(self.async_update())
 
     def update(self) -> None:
-        """Make update_before_add=True actually call our async_update."""
+        """So update_before_add=True calls our async_update immediately."""
         self.hass.async_create_task(self.async_update())
 
     async def async_update(self, now_arg=None) -> None:
@@ -234,7 +234,7 @@ class RoshChodeshTodaySensor(SensorEntity):
         )
         tz = ZoneInfo(self.hass.config.time_zone)
 
-        # calculate previous-day nightfall+72m for each R”Ch date
+        # compute *previous*-day nightfall+72m
         nightfalls: list[datetime] = []
         for gd in details.rosh_chodesh.gdays:
             prev_day = gd - timedelta(days=1)
