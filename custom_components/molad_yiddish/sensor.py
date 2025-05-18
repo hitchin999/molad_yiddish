@@ -26,6 +26,7 @@ DAY_MAPPING = {
     "Friday":    "פרייטאג",
     "Shabbos":   "שבת",
 }
+
 MONTH_MAPPING = {
     "Tishri":   "תשרי",   "Cheshvan": "חשוון", "Kislev":   "כסלו",
     "Tevet":    "טבת",     "Shvat":    "שבט",    "Adar":     "אדר",
@@ -33,6 +34,7 @@ MONTH_MAPPING = {
     "Iyar":     "אייר",    "Sivan":    "סיון",   "Tammuz":   "תמוז",
     "Av":       "אב",      "Elul":     "אלול",
 }
+
 TIME_OF_DAY = {
     "am": lambda h: "פארטאגס" if h < 6 else "צופרי",
     "pm": lambda h: "נאכמיטאג" if h < 18 else "ביינאכט",
@@ -64,7 +66,7 @@ class MoladYiddishSensor(SensorEntity):
         self.hass = hass
         self.helper = helper
         self._attr_state = None
-        self._attr_extra_state_attributes = {}
+        self._attr_extra_state_attributes: dict[str, any] = {}
         async_track_time_interval(hass, self.async_update, timedelta(hours=1))
 
     async def async_update(self, now=None) -> None:
@@ -76,7 +78,7 @@ class MoladYiddishSensor(SensorEntity):
             self._attr_state = None
             return
 
-        # Molad state string
+        # 1) Molad state string
         day_yd   = DAY_MAPPING[m.molad.day]
         h, mi    = m.molad.hours, m.molad.minutes
         ap       = m.molad.am_or_pm
@@ -84,10 +86,10 @@ class MoladYiddishSensor(SensorEntity):
         chal     = m.molad.chalakim
         chal_txt = "חלק" if chal == 1 else "חלקים"
         hh12     = h % 12 or 12
-        state_str = f"מולד {day_yd} {tod}, {mi} מינוט און {chal} {chal_txt} נאך {hh12}"
+        state_str = f"מولد {day_yd} {tod}, {mi} מינוט און {chal} {chal_txt} נאך {hh12}"
         self._attr_state = state_str
 
-        # Astral location
+        # 2) Compute nightfall +72m then convert to UTC Z‐time
         loc = LocationInfo(
             name="Home",
             region="",
@@ -95,8 +97,6 @@ class MoladYiddishSensor(SensorEntity):
             latitude=self.hass.config.latitude,
             longitude=self.hass.config.longitude,
         )
-
-        # R”Ch days & UTC‐converted nightfall+72m
         rc_yd = [DAY_MAPPING[d] for d in m.rosh_chodesh.days]
         rc_dates: list[str] = []
         for gdate in m.rosh_chodesh.gdays:
@@ -107,11 +107,13 @@ class MoladYiddishSensor(SensorEntity):
             )
             nightfall_local = s["sunset"] + timedelta(minutes=72)
             nightfall_utc = nightfall_local.astimezone(timezone.utc)
-            rc_dates.append(nightfall_utc.isoformat())
+            # **KEY**: format with trailing Z
+            rc_dates.append(nightfall_utc.strftime("%Y-%m-%dT%H:%M:%SZ"))
 
         rc_text = rc_yd[0] if len(rc_yd) == 1 else " & ".join(rc_yd)
         mon_yd  = MONTH_MAPPING[m.rosh_chodesh.month]
 
+        # 3) Publish all attributes
         self._attr_extra_state_attributes = {
             "day":                           day_yd,
             "hours":                         h,
@@ -186,3 +188,4 @@ class UpcomingShabbosMevorchimSensor(BinarySensorEntity):
     @property
     def icon(self) -> str:
         return "mdi:star-outline"
+        
