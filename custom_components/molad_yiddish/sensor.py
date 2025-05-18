@@ -13,17 +13,12 @@ from .molad_lib.helper import MoladHelper, MoladDetails
 
 _LOGGER = logging.getLogger(__name__)
 
-# Yiddish translations
+# Yiddish translations for days/months/time-of-day
 DAY_MAPPING = {
-    "Sunday": "זונטאג",
-    "Monday": "מאנטאג",
-    "Tuesday": "דינסטאג",
-    "Wednesday": "מיטוואך",
-    "Thursday": "דאנערשטאג",
-    "Friday": "פרייטאג",
-    "Shabbos": "שבת",
+    "Sunday": "זונטаг", "Monday": "מאנטאג", "Tuesday": "דינסטאג",
+    "Wednesday": "מיטוואך", "Thursday": "דאנערשטאג",
+    "Friday": "פרייטאג", "Shabbos": "שבת",
 }
-
 MONTH_MAPPING = {
     "Tishri": "תשרי",   "Cheshvan": "חשוון", "Kislev": "כסלו",
     "Tevet": "טבת",     "Shvat":    "שבט",    "Adar":   "אדר",
@@ -31,7 +26,6 @@ MONTH_MAPPING = {
     "Iyar":   "אייר",   "Sivan":   "סיון",   "Tammuz":"תמוז",
     "Av":     "אב",     "Elul":    "אלול",
 }
-
 TIME_OF_DAY = {
     "am": lambda h: "פארטאגס" if h < 6 else "צופרי",
     "pm": lambda h: "נאכמיטאג" if h < 18 else "ביינאכט",
@@ -43,7 +37,6 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities,
 ) -> None:
-    """Set up the three Molad Yiddish sensors."""
     helper = MoladHelper(hass.config)
     async_add_entities(
         [
@@ -51,70 +44,58 @@ async def async_setup_entry(
             ShabbosMevorchimSensor(hass, helper),
             UpcomingShabbosMevorchimSensor(hass, helper),
         ],
-        update_before_add=True,
+        True  # update_before_add
     )
 
 
 class MoladYiddishSensor(SensorEntity):
-    """Molad (ייִדיש) sensor with full Yiddish output."""
-
     _attr_name = "Molad Yiddish"
     _attr_unique_id = "molad_yiddish"
     _attr_entity_id = "sensor.molad_yiddish"
 
     def __init__(self, hass: HomeAssistant, helper: MoladHelper) -> None:
-        """Initialize the Molad sensor."""
-        self.hass = hass
         self.helper = helper
-        self._attr_state = None
-        self._attr_extra_state_attributes: dict[str, any] = {}
-        # Update immediately on add, then hourly
         async_track_time_interval(hass, self.async_update, timedelta(hours=1))
 
     async def async_update(self, now=None) -> None:
-        """Fetch Molad details and populate state + attributes."""
         today = date.today()
         try:
             m: MoladDetails = self.helper.get_molad(today)
         except Exception as e:
-            _LOGGER.error("Failed to compute Molad: %s", e)
+            _LOGGER.error("Molad update failed: %s", e)
             self._attr_state = None
             return
 
-        # Build the Yiddish‐only state string
-        day_yd   = DAY_MAPPING.get(m.molad.day, m.molad.day)
-        hours    = m.molad.hours
-        minutes  = m.molad.minutes
-        ampm     = m.molad.am_or_pm
-        tod      = TIME_OF_DAY[ampm](hours)
-        chalakim = m.molad.chalakim
-        chal_txt = "חלק" if chalakim == 1 else "חלקים"
-        hour12   = hours % 12 or 12
+        # Build state string in Yiddish
+        d_yd   = DAY_MAPPING[m.molad.day]
+        h, mi  = m.molad.hours, m.molad.minutes
+        ap     = m.molad.am_or_pm
+        tod    = TIME_OF_DAY[ap](h)
+        chal   = m.molad.chalakim
+        chal_s = "חלק" if chal==1 else "חלקים"
+        hh12   = h%12 or 12
 
-        state_str = (
-            f"מולד {day_yd} {tod}, "
-            f"{minutes} מינוט און {chalakim} {chal_txt} נאך {hour12}"
-        )
-        self._attr_state = state_str
+        state = f"מולד {d_yd} {tod}, {mi} מינוט און {chal} {chal_s} נאך {hh12}"
+        self._attr_state = state
 
-        # Translate rosh chodesh details
+        # R”Ch days & dates
         rc_days_en  = m.rosh_chodesh.days
-        rc_days_yd  = [DAY_MAPPING.get(d, d) for d in rc_days_en]
+        rc_days_yd  = [DAY_MAPPING[d] for d in rc_days_en]
         rc_dates    = [d.strftime("%Y-%m-%d") for d in m.rosh_chodesh.gdays]
-        rc_text     = " & ".join(rc_days_yd) if len(rc_days_yd) == 2 else (rc_days_yd[0] if rc_days_yd else "")
+        rc_text     = " & ".join(rc_days_yd) if len(rc_days_yd)==2 else (rc_days_yd[0] if rc_days_yd else "")
 
-        # Yiddish month name
-        mon_yd = MONTH_MAPPING.get(m.rosh_chodesh.month, m.rosh_chodesh.month)
+        # Yiddish month
+        mon_yd = MONTH_MAPPING[m.rosh_chodesh.month]
 
-        # Populate **all** attributes in Yiddish
+        # All attributes in Yiddish
         self._attr_extra_state_attributes = {
-            "day":                          day_yd,
-            "hours":                        hours,
-            "minutes":                      minutes,
-            "am_or_pm":                     ampm,
+            "day":                          d_yd,
+            "hours":                        h,
+            "minutes":                      mi,
+            "am_or_pm":                     ap,
             "time_of_day":                  tod,
-            "chalakim":                     chalakim,
-            "friendly":                     state_str,
+            "chalakim":                     chal,
+            "friendly":                     state,
             "rosh_chodesh":                 rc_text,
             "rosh_chodesh_days":            rc_days_yd,
             "rosh_chodesh_dates":           rc_dates,
@@ -129,26 +110,19 @@ class MoladYiddishSensor(SensorEntity):
 
 
 class ShabbosMevorchimSensor(SensorEntity):
-    """Sensor for “Is today Shabbos Mevorchim?”."""
-
     _attr_name = "Shabbos Mevorchim Yiddish"
     _attr_unique_id = "shabbos_mevorchim_yiddish"
     _attr_entity_id = "sensor.shabbos_mevorchim_yiddish"
 
     def __init__(self, hass: HomeAssistant, helper: MoladHelper) -> None:
-        self.hass = hass
         self.helper = helper
-        self._attr_state = None
         async_track_time_interval(hass, self.async_update, timedelta(hours=1))
 
     async def async_update(self, now=None) -> None:
-        """Fetch whether today is Shabbos Mevorchim."""
-        today = date.today()
         try:
-            m: MoladDetails = self.helper.get_molad(today)
-            self._attr_state = m.is_shabbos_mevorchim
+            self._attr_state = self.helper.get_molad(date.today()).is_shabbos_mevorchim
         except Exception as e:
-            _LOGGER.error("Failed to compute Shabbos Mevorchim: %s", e)
+            _LOGGER.error("Shabbos Mevorchim failed: %s", e)
             self._attr_state = False
 
     @property
@@ -157,26 +131,19 @@ class ShabbosMevorchimSensor(SensorEntity):
 
 
 class UpcomingShabbosMevorchimSensor(SensorEntity):
-    """Sensor for “Is the upcoming Shabbos Mevorchim?”."""
-
     _attr_name = "Upcoming Shabbos Mevorchim Yiddish"
     _attr_unique_id = "upcoming_shabbos_mevorchim_yiddish"
     _attr_entity_id = "sensor.upcoming_shabbos_mevorchim_yiddish"
 
     def __init__(self, hass: HomeAssistant, helper: MoladHelper) -> None:
-        self.hass = hass
         self.helper = helper
-        self._attr_state = None
         async_track_time_interval(hass, self.async_update, timedelta(hours=1))
 
     async def async_update(self, now=None) -> None:
-        """Fetch whether the next Shabbos is Mevorchim."""
-        today = date.today()
         try:
-            m: MoladDetails = self.helper.get_molad(today)
-            self._attr_state = m.is_upcoming_shabbos_mevorchim
+            self._attr_state = self.helper.get_molad(date.today()).is_upcoming_shabbos_mevorchim
         except Exception as e:
-            _LOGGER.error("Failed to compute Upcoming Shabbos Mevorchim: %s", e)
+            _LOGGER.error("Upcoming Shabbos Mevorchim failed: %s", e)
             self._attr_state = False
 
     @property
