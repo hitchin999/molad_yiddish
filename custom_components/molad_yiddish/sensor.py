@@ -46,6 +46,7 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities,
 ) -> None:
+    """Set up Molad Yiddish sensors."""
     helper = MoladHelper(hass.config)
     async_add_entities(
         [
@@ -78,7 +79,7 @@ class MoladYiddishSensor(SensorEntity):
             self._attr_state = None
             return
 
-        # Build the Molad state string
+        # Build state string
         day_yd   = DAY_MAPPING[m.molad.day]
         h, mi    = m.molad.hours, m.molad.minutes
         ap       = m.molad.am_or_pm
@@ -86,10 +87,10 @@ class MoladYiddishSensor(SensorEntity):
         chal     = m.molad.chalakim
         chal_txt = "חלק" if chal == 1 else "חלקים"
         hh12     = h % 12 or 12
-        state_str = f"מולד {day_yd} {tod}, {mi} מינוט און {chal} {chal_txt} נאך {hh12}"
+        state_str = f"מولد {day_yd} {tod}, {mi} מינוט און {chal} {chal_txt} נאך {hh12}"
         self._attr_state = state_str
 
-        # location & timezone
+        # Location for Astral
         loc = LocationInfo(
             name="home",
             region="",
@@ -99,13 +100,13 @@ class MoladYiddishSensor(SensorEntity):
         )
         tz = ZoneInfo(self.hass.config.time_zone)
 
-        # 1) Raw UTC‐midnight for DevTools
+        # UTC-midnight for DevTools
         rc_midnight = [
             f"{gd.isoformat()}T00:00:00Z"
             for gd in m.rosh_chodesh.gdays
         ]
 
-        # 2) True nightfall = sunset+72m on the *previous* day
+        # Actual nightfall+72m on previous day
         rc_nightfall: list[str] = []
         for gd in m.rosh_chodesh.gdays:
             prev_day = gd - timedelta(days=1)
@@ -114,7 +115,7 @@ class MoladYiddishSensor(SensorEntity):
             rc_nightfall.append(nf.isoformat())
 
         rc_yd  = [DAY_MAPPING[d] for d in m.rosh_chodesh.days]
-        rc_text= rc_yd[0] if len(rc_yd) == 1 else " & ".join(rc_yd)
+        rc_text= rc_yd[0] if len(rc_yd)==1 else " & ".join(rc_yd)
         mon_yd = MONTH_MAPPING[m.rosh_chodesh.month]
 
         self._attr_extra_state_attributes = {
@@ -168,7 +169,7 @@ class ShabbosMevorchimSensor(BinarySensorEntity):
         return "mdi:star-outline"
 
 
-class UpcomingShabbosMevorchimSensor(Binary_SENSOR_ENTITY):
+class UpcomingShabbosMevorchimSensor(BinarySensorEntity):
     _attr_name = "Upcoming Shabbos Mevorchim Yiddish"
     _attr_unique_id = "upcoming_shabbos_mevorchim_yiddish"
     _attr_entity_id = "binary_sensor.upcoming_shabbos_mevorchim_yiddish"
@@ -192,3 +193,4 @@ class UpcomingShabbosMevorchimSensor(Binary_SENSOR_ENTITY):
     @property
     def icon(self) -> str:
         return "mdi:star-outline"
+        
