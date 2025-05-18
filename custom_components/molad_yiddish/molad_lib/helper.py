@@ -6,6 +6,7 @@ Vendored MoladHelper from molad==0.0.11, patched for hdate 1.1.0:
   - Use `HebrewDate.from_jdn()` instead of `jdn_to_hdate`
   - Use `Months` enum from hdate.hebrew_date
   - Call Zmanim positionally (no `hebrew=` kwarg)
+  - Skip day 30 lookup when the month has only 29 days
 """
 
 import datetime
@@ -180,14 +181,36 @@ class MoladHelper:
         if next_m["month"] == 1:
             return RoshChodesh(next_month_name, "", [], [])
 
-        g1 = self.get_gdate(this_m, 30)
-        g2 = self.get_gdate(next_m, 1)
-        f  = self.get_day_of_week(g1)
-        s  = self.get_day_of_week(g2)
+        # determine length of this month
+        month_enum = Months(this_m["month"])
+        try:
+            length = month_enum.days(this_m["year"])
+        except TypeError:
+            length = month_enum.length
 
-        if f == s:
-            return RoshChodesh(next_month_name, f, [f], [g1])
-        return RoshChodesh(next_month_name, f + " & " + s, [f, s], [g1, g2])
+        days = []
+        gdays = []
+
+        # if month has 30 days, include day 30
+        if length >= 30:
+            g1 = self.get_gdate(this_m, 30)
+            f1 = self.get_day_of_week(g1)
+            days.append(f1)
+            gdays.append(g1)
+
+        # always include day 1 of next month
+        g2 = self.get_gdate(next_m, 1)
+        f2 = self.get_day_of_week(g2)
+        days.append(f2)
+        gdays.append(g2)
+
+        # build display text
+        if len(days) == 2:
+            text = f"{days[0]} & {days[1]}"
+        else:
+            text = days[0]
+
+        return RoshChodesh(next_month_name, text, days, gdays)
 
     def get_shabbos_mevorchim_english_date(self, date):
         this_m = self.get_numeric_month_year(date)
@@ -206,8 +229,7 @@ class MoladHelper:
         j   = hdate.converters.gdate_to_jdn(date)
         h   = HebrewDate.from_jdn(j)
         hd  = h.day
-        # positional-only call, no kwargs
-        z   = Zmanim(date, loc)
+        z   = Zmanim(date, loc)  # positional call only
         smd = self.get_shabbos_mevorchim_hebrew_day_of_month(date)
 
         return (
@@ -247,4 +269,3 @@ class MoladHelper:
         isum  = self.is_upcoming_shabbos_mevorchim(date)
         rc    = self.get_rosh_chodesh_days(date)
         return MoladDetails(molad, ism, isum, rc)
-      
