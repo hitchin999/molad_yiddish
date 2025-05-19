@@ -12,6 +12,7 @@ from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.util.dt import now as dt_now
 
 from .molad_lib.helper import MoladHelper, MoladDetails
 
@@ -60,7 +61,7 @@ async def async_setup_entry(
 
 
 class MoladYiddishSensor(SensorEntity):
-    """Main Molad (ייִדיש) sensor."""
+    """Main Molad (ייִדיש) sensor showing the upcoming month's Molad."""
 
     _attr_name = "Molad Yiddish"
     _attr_unique_id = "molad_yiddish"
@@ -74,9 +75,12 @@ class MoladYiddishSensor(SensorEntity):
         async_track_time_interval(hass, self.async_update, timedelta(hours=1))
 
     async def async_update(self, now=None) -> None:
-        today = date.today()
+        # Use local now to pick a date roughly mid-month to always get next month
+        today_local = dt_now().date()
+        target_date = today_local + timedelta(days=15)
+
         try:
-            m: MoladDetails = self.helper.get_molad(today)
+            m: MoladDetails = self.helper.get_molad(target_date)
         except Exception as e:
             _LOGGER.error("Molad update failed: %s", e)
             self._attr_native_value = None
@@ -91,7 +95,6 @@ class MoladYiddishSensor(SensorEntity):
         chal_txt = "חלק" if chal == 1 else "חלקים"
         hh12     = h % 12 or 12
         state_str = f"מולד {day_yd} {tod}, {mi} מינוט און {chal} {chal_txt} נאך {hh12}"
-        # Set sensor state from friendly string
         self._attr_native_value = state_str
 
         # Astral location setup
@@ -106,7 +109,8 @@ class MoladYiddishSensor(SensorEntity):
 
         # 1) raw UTC-midnight for DevTools
         rc_midnight = [
-            f"{gd.isoformat()}T00:00:00Z" for gd in m.rosh_chodesh.gdays
+            f"{gd.isoformat()}T00:00:00Z"
+            for gd in m.rosh_chodesh.gdays
         ]
 
         # 2) true local nightfall+72m, on the day before each R”Ch
@@ -117,26 +121,26 @@ class MoladYiddishSensor(SensorEntity):
             nf = s["sunset"] + timedelta(minutes=72)
             rc_nightfall.append(nf.isoformat())
 
-        rc_yd = [DAY_MAPPING[d] for d in m.rosh_chodesh.days]
-        rc_text = rc_yd[0] if len(rc_yd) == 1 else " & ".join(rc_yd)
+        rc_yd  = [DAY_MAPPING[d] for d in m.rosh_chodesh.days]
+        rc_text= rc_yd[0] if len(rc_yd) == 1 else " & ".join(rc_yd)
         mon_yd = MONTH_MAPPING[m.rosh_chodesh.month]
 
         # Publish attributes
         self._attr_extra_state_attributes = {
-            "day":                        day_yd,
-            "hours":                      h,
-            "minutes":                    mi,
-            "am_or_pm":                   ap,
-            "time_of_day":                tod,
-            "chalakim":                   chal,
-            "friendly":                   state_str,
-            "rosh_chodesh_midnight":      rc_midnight,
-            "rosh_chodesh_nightfall":     rc_nightfall,
-            "rosh_chodesh":               rc_text,
-            "rosh_chodesh_days":          rc_yd,
-            "is_shabbos_mevorchim":       m.is_shabbos_mevorchim,
-            "is_upcoming_shabbos_mevorchim": m.is_upcoming_shabbos_mevorchim,
-            "month_name":                 mon_yd,
+            "day":                            day_yd,
+            "hours":                          h,
+            "minutes":                        mi,
+            "am_or_pm":                       ap,
+            "time_of_day":                    tod,
+            "chalakim":                       chal,
+            "friendly":                       state_str,
+            "rosh_chodesh_midnight":          rc_midnight,
+            "rosh_chodesh_nightfall":         rc_nightfall,
+            "rosh_chodesh":                   rc_text,
+            "rosh_chodesh_days":              rc_yd,
+            "is_shabbos_mevorchim":           m.is_shabbos_mevorchim,
+            "is_upcoming_shabbos_mevorchim":  m.is_upcoming_shabbos_mevorchim,
+            "month_name":                     mon_yd,
         }
 
     def update(self) -> None:
@@ -163,7 +167,7 @@ class ShabbosMevorchimSensor(BinarySensorEntity):
 
     async def async_update(self, now=None) -> None:
         try:
-            self._attr_is_on = self.helper.get_molad(date.today()).is_shabbos_mevorchim
+            self._attr_is_on = self.helper.get_molad(dt_now().date() + timedelta(days=15)).is_shabbos_mevorchim
         except Exception as e:
             _LOGGER.error("Shabbos Mevorchim failed: %s", e)
             self._attr_is_on = False
@@ -191,7 +195,7 @@ class UpcomingShabbosMevorchimSensor(BinarySensorEntity):
 
     async def async_update(self, now=None) -> None:
         try:
-            self._attr_is_on = self.helper.get_molad(date.today()).is_upcoming_shabbos_mevorchim
+            self._attr_is_on = self.helper.get_molad(dt_now().date() + timedelta(days=15)).is_upcoming_shabbos_mevorchim
         except Exception as e:
             _LOGGER.error("Upcoming Shabbos Mevorchim failed: %s", e)
             self._attr_is_on = False
