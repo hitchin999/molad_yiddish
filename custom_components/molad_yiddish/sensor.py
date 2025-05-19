@@ -14,20 +14,49 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.event import async_track_time_interval
 
 from .molad_lib.helper import MoladHelper, MoladDetails
-from .const import DOMAIN, DAY_MAPPING, MONTH_MAPPING, TIME_OF_DAY
 
 _LOGGER = logging.getLogger(__name__)
 
+# Yiddish translations
+DAY_MAPPING = {
+    "Sunday":    "זונטאג",
+    "Monday":    "מאנטאג",
+    "Tuesday":   "דינסטאג",
+    "Wednesday": "מיטוואך",
+    "Thursday":  "דאנערשטאג",
+    "Friday":    "פרייטאג",
+    "Shabbos":   "שבת",
+}
+
+MONTH_MAPPING = {
+    "Tishri":   "תשרי",   "Cheshvan": "חשוון", "Kislev":   "כסלו",
+    "Tevet":    "טבת",     "Shvat":    "שבט",    "Adar":     "אדר",
+    "Adar I":   "אדר א",   "Adar II":  "אדר ב",  "Nissan":   "ניסן",
+    "Iyar":     "אייר",    "Sivan":    "סיון",   "Tammuz":   "תמוז",
+    "Av":       "אב",      "Elul":     "אלול",
+}
+
+TIME_OF_DAY = {
+    "am": lambda h: "פארטאגס" if h < 6 else "צופרי",
+    "pm": lambda h: "נאכמיטאג" if h < 18 else "ביינאכט",
+}
+
 
 async def async_setup_entry(
-    hass: HomeAssistant, entry: ConfigEntry, async_add_entities
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities,
 ) -> None:
-    helper = MoladHelper(entry.data)
-    async_add_entities([
-        MoladYiddishSensor(hass, helper),
-        ShabbosMevorchimSensor(hass, helper),
-        UpcomingShabbosMevorchimSensor(hass, helper),
-    ])
+    """Set up Molad Yiddish sensors."""
+    helper = MoladHelper(hass.config)
+    async_add_entities(
+        [
+            MoladYiddishSensor(hass, helper),
+            ShabbosMevorchimSensor(hass, helper),
+            UpcomingShabbosMevorchimSensor(hass, helper),
+        ],
+        update_before_add=True,
+    )
 
 
 class MoladYiddishSensor(SensorEntity):
@@ -54,13 +83,13 @@ class MoladYiddishSensor(SensorEntity):
             return
 
         # Build the Yiddish Molad state string
-        day_yd = DAY_MAPPING[m.molad.day]
-        h, mi = m.molad.hours, m.molad.minutes
-        ap = m.molad.am_or_pm
-        tod = TIME_OF_DAY[ap](h)
-        chal = m.molad.chalakim
+        day_yd   = DAY_MAPPING[m.molad.day]
+        h, mi    = m.molad.hours, m.molad.minutes
+        ap       = m.molad.am_or_pm
+        tod      = TIME_OF_DAY[ap](h)
+        chal     = m.molad.chalakim
         chal_txt = "חלק" if chal == 1 else "חלקים"
-        hh12 = h % 12 or 12
+        hh12     = h % 12 or 12
         state_str = f"מולד {day_yd} {tod}, {mi} מינוט און {chal} {chal_txt} נאך {hh12}"
         self._attr_native_value = state_str
 
@@ -88,27 +117,31 @@ class MoladYiddishSensor(SensorEntity):
             nf = s["sunset"] + timedelta(minutes=72)
             rc_nightfall.append(nf.isoformat())
 
-        rc_yd = [DAY_MAPPING[d] for d in m.rosh_chodesh.days]
-        rc_text = rc_yd[0] if len(rc_yd) == 1 else " & ".join(rc_yd)
+        rc_yd  = [DAY_MAPPING[d] for d in m.rosh_chodesh.days]
+        rc_text= rc_yd[0] if len(rc_yd) == 1 else " & ".join(rc_yd)
         mon_yd = MONTH_MAPPING[m.rosh_chodesh.month]
 
         # Publish attributes
         self._attr_extra_state_attributes = {
-            "day": day_yd,
-            "hours": h,
-            "minutes": mi,
-            "am_or_pm": ap,
-            "time_of_day": tod,
-            "chalakim": chal,
-            "friendly": state_str,
-            "rosh_chodesh_midnight": rc_midnight,
-            "rosh_chodesh_nightfall": rc_nightfall,
-            "rosh_chodesh": rc_text,
-            "rosh_chodesh_days": rc_yd,
-            "is_shabbos_mevorchim": m.is_shabbos_mevorchim,
-            "is_upcoming_shabbos_mevorchim": m.is_upcoming_shabbos_mevorchim,
-            "month_name": mon_yd,
+            "day":                            day_yd,
+            "hours":                          h,
+            "minutes":                        mi,
+            "am_or_pm":                       ap,
+            "time_of_day":                    tod,
+            "chalakim":                       chal,
+            "friendly":                       state_str,
+            "rosh_chodesh_midnight":          rc_midnight,
+            "rosh_chodesh_nightfall":         rc_nightfall,
+            "rosh_chodesh":                   rc_text,
+            "rosh_chodesh_days":              rc_yd,
+            "is_shabbos_mevorchim":           m.is_shabbos_mevorchim,
+            "is_upcoming_shabbos_mevorchim":  m.is_upcoming_shabbos_mevorchim,
+            "month_name":                     mon_yd,
         }
+
+    def update(self) -> None:
+        """Legacy sync update so update_before_add fires immediately."""
+        self.hass.async_create_task(self.async_update())
 
     @property
     def icon(self) -> str:
