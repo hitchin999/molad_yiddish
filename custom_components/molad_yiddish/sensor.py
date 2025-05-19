@@ -5,7 +5,6 @@ import logging
 from datetime import date, timedelta
 from zoneinfo import ZoneInfo
 
-from dateutil.relativedelta import relativedelta
 from astral import LocationInfo
 from astral.sun import sun
 from homeassistant.components.sensor import SensorEntity
@@ -61,7 +60,7 @@ async def async_setup_entry(
 
 
 class MoladYiddishSensor(SensorEntity):
-    """Main Molad (ייִדיש) sensor for the upcoming month's Molad."""
+    """Main Molad (ייִדיש) sensor."""
 
     _attr_name = "Molad Yiddish"
     _attr_unique_id = "molad_yiddish"
@@ -70,18 +69,15 @@ class MoladYiddishSensor(SensorEntity):
     def __init__(self, hass: HomeAssistant, helper: MoladHelper) -> None:
         self.hass = hass
         self.helper = helper
+        # Use native_value for HA state
         self._attr_native_value = None
         self._attr_extra_state_attributes: dict[str, any] = {}
         async_track_time_interval(hass, self.async_update, timedelta(hours=1))
 
     async def async_update(self, now=None) -> None:
-        # Calculate first day of next month
         today = date.today()
-        first_of_month = today.replace(day=1)
-        target_date = first_of_month + relativedelta(months=1)
-
         try:
-            m: MoladDetails = self.helper.get_molad(target_date)
+            m: MoladDetails = self.helper.get_molad(today)
         except Exception as e:
             _LOGGER.error("Molad update failed: %s", e)
             self._attr_native_value = None
@@ -96,6 +92,7 @@ class MoladYiddishSensor(SensorEntity):
         chal_txt = "חלק" if chal == 1 else "חלקים"
         hh12     = h % 12 or 12
         state_str = f"מולד {day_yd} {tod}, {mi} מינוט און {chal} {chal_txt} נאך {hh12}"
+        # Assign to native_value so HA shows it as sensor state
         self._attr_native_value = state_str
 
         # Astral location setup for Rosh Chodesh attributes
@@ -108,13 +105,13 @@ class MoladYiddishSensor(SensorEntity):
         )
         tz = ZoneInfo(self.hass.config.time_zone)
 
-        # Raw UTC-midnight for DevTools
+        # 1) raw UTC-midnight for DevTools
         rc_midnight = [
             f"{gd.isoformat()}T00:00:00Z"
             for gd in m.rosh_chodesh.gdays
         ]
 
-        # Local nightfall+72m, day before each R"Ch
+        # 2) local nightfall+72m on the day before each R"Ch
         rc_nightfall: list[str] = []
         for gd in m.rosh_chodesh.gdays:
             prev_day = gd - timedelta(days=1)
@@ -128,20 +125,20 @@ class MoladYiddishSensor(SensorEntity):
 
         # Publish attributes
         self._attr_extra_state_attributes = {
-            "day":                            day_yd,
-            "hours":                          h,
-            "minutes":                        mi,
-            "am_or_pm":                       ap,
-            "time_of_day":                    tod,
-            "chalakim":                       chal,
-            "friendly":                       state_str,
-            "rosh_chodesh_midnight":          rc_midnight,
-            "rosh_chodesh_nightfall":         rc_nightfall,
-            "rosh_chodesh":                   rc_text,
-            "rosh_chodesh_days":              rc_yd,
-            "is_shabbos_mevorchim":           m.is_shabbos_mevorchim,
-            "is_upcoming_shabbos_mevorchim":  m.is_upcoming_shabbos_mevorchim,
-            "month_name":                     mon_yd,
+            "day":                           day_yd,
+            "hours":                         h,
+            "minutes":                       mi,
+            "am_or_pm":                      ap,
+            "time_of_day":                   tod,
+            "chalakim":                      chal,
+            "friendly":                      state_str,
+            "rosh_chodesh_midnight":         rc_midnight,
+            "rosh_chodesh_nightfall":        rc_nightfall,
+            "rosh_chodesh":                  rc_text,
+            "rosh_chodesh_days":             rc_yd,
+            "is_shabbos_mevorchim":          m.is_shabbos_mevorchim,
+            "is_upcoming_shabbos_mevorchim": m.is_upcoming_shabbos_mevorchim,
+            "month_name":                    mon_yd,
         }
 
     def update(self) -> None:
