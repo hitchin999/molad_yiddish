@@ -70,7 +70,6 @@ class MoladYiddishSensor(SensorEntity):
         self.hass = hass
         self.helper = helper
         self._attr_native_value = None
-        self._attr_state = None
         self._attr_extra_state_attributes: dict[str, any] = {}
         async_track_time_interval(hass, self.async_update, timedelta(hours=1))
 
@@ -81,7 +80,6 @@ class MoladYiddishSensor(SensorEntity):
         except Exception as e:
             _LOGGER.error("Molad update failed: %s", e)
             self._attr_native_value = None
-            self._attr_state = None
             return
 
         # Build the Yiddish Molad state string
@@ -93,9 +91,8 @@ class MoladYiddishSensor(SensorEntity):
         chal_txt = "חלק" if chal == 1 else "חלקים"
         hh12     = h % 12 or 12
         state_str = f"מולד {day_yd} {tod}, {mi} מינוט און {chal} {chal_txt} נאך {hh12}"
-        # ensure state reflects friendly attribute
+        # set sensor state from friendly string
         self._attr_native_value = state_str
-        self._attr_state = state_str
 
         # Astral location setup
         loc = LocationInfo(
