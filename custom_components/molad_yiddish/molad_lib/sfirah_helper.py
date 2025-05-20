@@ -1,3 +1,5 @@
+# /config/custom_components/molad_yiddish/molad_lib/sfirah_helper.py
+
 import logging
 from datetime import timedelta, date, datetime
 
@@ -5,6 +7,9 @@ from astral import LocationInfo
 from astral.sun import sun
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
+
+from hdate.converters import gdate_to_jdn
+from hdate.hebrew_date import HebrewDate
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -118,7 +123,8 @@ SEFIRA_MIDDOS = [
 
 class SfirahHelper:
     """
-    Helper to compute current sefirah (Omer) texts based on local sunset + 72 minutes.
+    Compute Omer count and corresponding Hebrew texts based on Hebrew date
+    and sunset + 72 minutes.
     """
     def __init__(self, hass: HomeAssistant):
         self.hass = hass
@@ -135,30 +141,38 @@ class SfirahHelper:
         s = sun(loc.observer, date=for_date, tzinfo=dt_util.DEFAULT_TIME_ZONE)
         return s["sunset"] + timedelta(minutes=72)
 
+    def _get_raw_omer_day(self, for_date: date) -> int:
+        """Calculate raw Omer day (1–49) based on the Hebrew date."""
+        jdn = gdate_to_jdn(for_date)
+        heb = HebrewDate.from_jdn(jdn)
+        month_name = str(heb.month)  # e.g. "ניסן", "אייר", "סיון"
+        day = heb.day
+        # Nisan 16–30 → 1–15
+        if month_name == "ניסן" and day >= 16:
+            return day - 15
+        # Iyar 1–29 → 16–44
+        if month_name == "אייר":
+            return 15 + day
+        # Sivan 1–5 → 45–49
+        if month_name == "סיון" and day <= 5:
+            return 30 + day
+        return 0
+
     def get_effective_omer_day(self) -> int:
         """
-        Read the raw omer day from sensor.jewish_calendar_day_of_the_omer,
-        then bump by 1 if current time is past sunset + 72 minutes.
+        Compute the final Omer day, bumping by one after sunset + 72 minutes.
+        Returns an integer 0–49 (0 means before Omer).
         """
-        state = self.hass.states.get("sensor.jewish_calendar_day_of_the_omer")
-        try:
-            omer_day = int(state.state)
-        except Exception:
-            _LOGGER.warning("Invalid Omer day state: %s", state)
-            return 0
-
-        now = dt_util.now()
-        threshold_today = self._get_threshold(now.date())
-        if now >= threshold_today:
-            omer_day += 1
-        return max(0, min(omer_day, len(SEFIRA_TEXTS) - 1))
+        today = dt_util.now().date()
+        raw = self._get_raw_omer_day(today)
+        if dt_util.now() >= self._get_threshold(today):
+            raw += 1
+        return max(0, min(raw, len(SEFIRA_TEXTS) - 1))
 
     def get_sefirah_text(self) -> str:
-        """Return the Hebrew text for the current sefirah day."""
-        day = self.get_effective_omer_day()
-        return SEFIRA_TEXTS[day]
+        """Return the Hebrew Omer text for the current day."""
+        return SEFIRA_TEXTS[self.get_effective_omer_day()]
 
     def get_middos_text(self) -> str:
-        """Return the Hebrew middot text for the current sefirah day."""
-        day = self.get_effective_omer_day()
-        return SEFIRA_MIDDOS[day]
+        """Return the Hebrew Middot text for the current Omer day."""
+        return SEFIRA_MIDDOS[self.get_effective_omer_day()]
