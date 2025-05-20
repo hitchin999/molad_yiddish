@@ -77,7 +77,13 @@ class MoladYiddishSensor(SensorEntity):
         today = date.today()
         jdn = gdate_to_jdn(today)
         heb = HebrewDate.from_jdn(jdn)
-        base_date = today  # ✅ Always use today to avoid molad misalignment
+        heb_day = heb.day
+
+        # ✅ Restore correct molad month logic
+        if heb_day < 3:
+            base_date = today - timedelta(days=15)
+        else:
+            base_date = today
 
         try:
             details: MoladDetails = self.helper.get_molad(base_date)
