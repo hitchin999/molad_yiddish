@@ -15,27 +15,26 @@ from hdate.converters import gdate_to_jdn
 from hdate.hebrew_date import HebrewDate
 
 from .molad_lib.helper import MoladHelper, MoladDetails
-from .special_shabbos_sensor import SpecialShabbosSensor  # ✅ Import added
+from .special_shabbos_sensor import SpecialShabbosSensor
 
 _LOGGER = logging.getLogger(__name__)
 
-# Yiddish translations
 DAY_MAPPING = {
-    "Sunday":    "זונטאג",
-    "Monday":    "מאנטאג",
-    "Tuesday":   "דינסטאג",
+    "Sunday": "זונטאג",
+    "Monday": "מאנטאג",
+    "Tuesday": "דינסטאג",
     "Wednesday": "מיטוואך",
-    "Thursday":  "דאנערשטאג",
-    "Friday":    "פרייטאג",
-    "Shabbos":   "שבת",
+    "Thursday": "דאנערשטאג",
+    "Friday": "פרייטאג",
+    "Shabbos": "שבת",
 }
 
 MONTH_MAPPING = {
-    "Tishri":   "תשרי",   "Cheshvan": "חשוון", "Kislev":   "כסלו",
-    "Tevet":    "טבת",     "Shvat":    "שבט",    "Adar":     "אדר",
-    "Adar I":   "אדר א",   "Adar II":  "אדר ב",  "Nissan":   "ניסן",
-    "Iyar":     "אייר",    "Sivan":    "סיון",   "Tammuz":   "תמוז",
-    "Av":       "אב",      "Elul":     "אלול",
+    "Tishri": "תשרי", "Cheshvan": "חשוון", "Kislev": "כסלו",
+    "Tevet": "טבת", "Shvat": "שבט", "Adar": "אדר",
+    "Adar I": "אדר א", "Adar II": "אדר ב", "Nissan": "ניסן",
+    "Iyar": "אייר", "Sivan": "סיון", "Tammuz": "תמוז",
+    "Av": "אב", "Elul": "אלול",
 }
 
 TIME_OF_DAY = {
@@ -49,22 +48,19 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities,
 ) -> None:
-    """Set up Molad Yiddish sensors."""
     helper = MoladHelper(hass.config)
     async_add_entities(
         [
             MoladYiddishSensor(hass, helper),
             ShabbosMevorchimSensor(hass, helper),
             UpcomingShabbosMevorchimSensor(hass, helper),
-            SpecialShabbosSensor()  # ✅ Registered here properly
+            SpecialShabbosSensor(),
         ],
         update_before_add=True,
     )
 
 
 class MoladYiddishSensor(SensorEntity):
-    """Main Molad Yiddish sensor for month's Molad logic."""
-
     _attr_name = "Molad Yiddish"
     _attr_unique_id = "molad_yiddish"
     _attr_entity_id = "sensor.molad_yiddish"
@@ -81,9 +77,7 @@ class MoladYiddishSensor(SensorEntity):
         today = date.today()
         jdn = gdate_to_jdn(today)
         heb = HebrewDate.from_jdn(jdn)
-        heb_day = heb.day
-
-        base_date = today - timedelta(days=15) if heb_day < 3 else today
+        base_date = today  # ✅ Always use today to avoid molad misalignment
 
         try:
             details: MoladDetails = self.helper.get_molad(base_date)
@@ -114,7 +108,7 @@ class MoladYiddishSensor(SensorEntity):
 
         rc = details.rosh_chodesh
         rc_midnight = [f"{gd.isoformat()}T00:00:00Z" for gd in rc.gdays]
-        rc_nightfall: list[str] = []
+        rc_nightfall = []
         for gd in rc.gdays:
             prev = gd - timedelta(days=1)
             sd = sun(loc.observer, date=prev, tzinfo=tz)
