@@ -58,7 +58,9 @@ async def async_setup_entry(
         ],
         update_before_add=True,
     )
-
+    
+from .special_shabbos_sensor import SpecialShabbosSensor
+async_add_entities([SpecialShabbosSensor()], update_before_add=True)
 
 class MoladYiddishSensor(SensorEntity):
     """Main Molad Yiddish sensor for month's Molad logic."""
