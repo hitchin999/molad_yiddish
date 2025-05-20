@@ -1,36 +1,34 @@
+"""
+Vendored MoladHelper using pyluach for accurate molad calculations.
+
+Requires:
+    pip install pyluach
+"""
+
 import datetime
-import math
 import logging
 
 import hdate
 import hdate.converters
 from hdate.hebrew_date import Months, HebrewDate, is_shabbat
+from pyluach.hebrewcal import Month as PMonth
 
-# Set up logging
 _LOGGER = logging.getLogger(__name__)
 
-STANDARD_MONTH_NUMBER = {
-    "NISSAN": 1,
-    "IYYAR": 2,
-    "SIVAN": 3,
-    "TAMMUZ": 4,
-    "AV": 5,
-    "ELUL": 6,
-    "TISHREI": 7,
-    "CHESHVAN": 8,
-    "KISLEV": 9,
-    "TEVET": 10,
-    "SHEVAT": 11,
-    "ADAR": 12,
-    "ADAR I": 12,
-    "ADAR II": 13,
+# Mapping from hdate.Months.name to pyluach month number (1=Nissan … 13=Adar II)
+_HD2PY = {
+    "NISSAN":   1, "IYYAR":    2, "SIVAN":    3,
+    "TAMMUZ":   4, "AV":       5, "ELUL":     6,
+    "TISHREI":  7, "CHESHVAN": 8, "KISLEV":   9,
+    "TEVET":   10, "SHEVAT":  11, "ADAR":    12,
+    "ADAR_I":  12, "ADAR_II": 13,
 }
 
 class Molad:
     def __init__(self, day, hours, minutes, am_or_pm, chalakim, friendly):
-        self.day = day
-        self.hours = hours
-        self.minutes = minutes
+        self.day      = day
+        self.hours    = hours
+        self.minutes  = minutes
         self.am_or_pm = am_or_pm
         self.chalakim = chalakim
         self.friendly = friendly
@@ -38,103 +36,43 @@ class Molad:
 class RoshChodesh:
     def __init__(self, month, text, days, gdays=None):
         self.month = month
-        self.text = text
-        self.days = days
+        self.text  = text
+        self.days  = days
         self.gdays = gdays
 
 class MoladDetails:
-    def __init__(self, molad: Molad, is_shabbos_mevorchim: bool, is_upcoming_shabbos_mevorchim: bool, rosh_chodesh: RoshChodesh):
+    def __init__(self, molad: Molad, is_shabbos_mevorchim: bool,
+                 is_upcoming_shabbos_mevorchim: bool, rosh_chodesh: RoshChodesh):
         self.molad = molad
         self.is_shabbos_mevorchim = is_shabbos_mevorchim
         self.is_upcoming_shabbos_mevorchim = is_upcoming_shabbos_mevorchim
         self.rosh_chodesh = rosh_chodesh
 
 class MoladHelper:
+
     def __init__(self, config):
         self.config = config
 
-    def sumup(self, multipliers) -> Molad:
-        shifts = [
-            [2, 5,   204],
-            [2, 16,  595],
-            [4, 8,   876],
-            [5, 21,  589],
-            [1, 12,  793],
-        ]
-        out00 = self.multiply_matrix([multipliers], shifts)[0]
-        out1  = self.carry_and_reduce(out00)
-        return self.convert_to_english(out1)
+    def get_actual_molad(self, date: datetime.date) -> Molad:
+        nxt = self.get_next_numeric_month_year(date)
+        year, cust_month = nxt["year"], nxt["month"]
 
-    def multiply_matrix(self, m1, m2):
-        res = [[0]*len(m2[0]) for _ in m1]
-        for i in range(len(m1)):
-            for j in range(len(m2[0])):
-                for k in range(len(m2)):
-                    res[i][j] += m1[i][k] * m2[k][j]
-        return res
+        hd_name = Months(cust_month).name.replace(" ", "_").upper()
+        py_month = _HD2PY[hd_name]
+        pm = PMonth(year, py_month)
+        ann = pm.molad_announcement()
 
-    def carry_and_reduce(self, out0):
-        xx, out1 = out0[2], [0,0,0]
-        out1[2] = yy = xx % 1080
-        zz      = xx // 1080
-        if yy < 0:
-            yy, zz = yy + 1080, zz - 1
+        wd = ann["weekday"]
+        h24 = ann["hour"]
+        mins = ann["minutes"]
+        parts = ann["parts"]
 
-        xx = out0[1] + zz
-        out1[1] = yy = xx % 24
-        zz       = xx // 24
-        if yy < 0:
-            yy, zz = yy + 24, zz - 1
+        ampm = "am" if h24 < 12 else "pm"
+        h12 = h24 % 12 or 12
+        day_name = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Shabbos"][wd-1]
+        friendly = f"{day_name}, {h12}:{mins:02d} {ampm} and {parts} chalakim"
 
-        xx = out0[0] + zz
-        out1[0] = yy = (xx + 6) % 7 + 1
-        if yy < 0:
-            yy += 7
-
-        return out1
-
-    def convert_to_english(self, out1) -> Molad:
-        days = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Shabbos"]
-        d, h = out1[0], out1[1] - 6
-        if h < 0:
-            d, h = d - 1, h + 24
-        chalakim = out1[2]
-        daynm    = days[d-1]
-
-        pm = "am"
-        if h >= 12:
-            pm, h = "pm", h - 12
-
-        minutes = chalakim // 18
-        chalakim %= 18
-        h        = 12 if h == 0 else h
-        filler   = "0" if minutes < 10 else ""
-        friendly = f"{daynm}, {h}:{filler}{minutes} {pm} and {chalakim} chalakim"
-        return Molad(daynm, h, minutes, pm, chalakim, friendly)
-
-    def get_standard_month(self, custom_month):
-        month_name = Months(custom_month).name
-        return STANDARD_MONTH_NUMBER[month_name]
-
-    def get_actual_molad(self, date):
-        d = self.get_next_numeric_month_year(date)
-        year, month = d["year"], d["month"]
-        guach = {3, 6, 8, 11, 14, 17, 19}
-        cycles = year // 19
-        yrs = year % 19
-        isleap = yrs in guach
-
-        if isleap:
-            if month == 13:      month = 6
-            elif month == 14:    month = 7
-            elif month > 6:      month += 1
-
-        standard_month = self.get_standard_month(month)
-        regular = sum(1 for i in range(yrs-1) if (i+1) not in guach)
-        leap = sum(1 for i in range(yrs-1) if (i+1) in guach)
-
-        molad = self.sumup([1, cycles, regular, leap, standard_month-1])
-        return molad
+        return Molad(day_name, h12, mins, ampm, parts, friendly)
 
     def get_numeric_month_year(self, date):
         j = hdate.converters.gdate_to_jdn(date)
@@ -144,10 +82,10 @@ class MoladHelper:
     def get_next_numeric_month_year(self, date):
         d = self.get_numeric_month_year(date)
         y, m = d["year"], d["month"]
-        if m == 12:
+        if m == 12 and not HebrewDate(y, m, 1).is_leap_year():
             m, y = 1, y + 1
-        elif m == 14:
-            m = 7
+        elif m == 13:
+            m, y = 1, y + 1
         else:
             m += 1
         return {"year": y, "month": m}
@@ -206,6 +144,6 @@ class MoladHelper:
     def get_molad(self, date) -> MoladDetails:
         m = self.get_actual_molad(date)
         ism = self.is_shabbos_mevorchim(date)
-        isup = self.is_upcoming_shabbos_mevorchim(date)
+        isu = self.is_upcoming_shabbos_mevorchim(date)
         rc = self.get_rosh_chodesh_days(date)
-        return MoladDetails(m, ism, isup, rc)
+        return MoladDetails(m, ism, isu, rc)
