@@ -16,6 +16,8 @@ from hdate.hebrew_date import HebrewDate
 
 from .molad_lib.helper import MoladHelper, MoladDetails
 from .special_shabbos_sensor import SpecialShabbosSensor
+from .sfirah_sensor import SefirahCounterYiddish, SefirahCounterMiddosYiddish
+from .molad_lib.sfirah_helper import SfirahHelper  # helper for Omer counters
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -48,13 +50,21 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities,
 ) -> None:
-    helper = MoladHelper(hass.config)
+    # Molad and Shabbos sensors use MoladHelper
+    molad_helper = MoladHelper(hass.config)
+    # Omer (Sefirah) counters use SfirahHelper
+    sfirah_helper = SfirahHelper(hass)
+
     async_add_entities(
         [
-            MoladYiddishSensor(hass, helper),
-            ShabbosMevorchimSensor(hass, helper),
-            UpcomingShabbosMevorchimSensor(hass, helper),
+            MoladYiddishSensor(hass, molad_helper),
+            ShabbosMevorchimSensor(hass, molad_helper),
+            UpcomingShabbosMevorchimSensor(hass, molad_helper),
             SpecialShabbosSensor(),
+
+            # —— new Sefirah (Omer) counters —— #
+            SefirahCounterYiddish(sfirah_helper),
+            SefirahCounterMiddosYiddish(sfirah_helper),
         ],
         update_before_add=True,
     )
@@ -220,4 +230,3 @@ class UpcomingShabbosMevorchimSensor(BinarySensorEntity):
     @property
     def icon(self) -> str:
         return "mdi:star-outline"
-        
