@@ -15,6 +15,7 @@ from hdate.converters import gdate_to_jdn
 from hdate.hebrew_date import HebrewDate
 
 from .molad_lib.helper import MoladHelper, MoladDetails
+from .special_shabbos_sensor import SpecialShabbosSensor  # ✅ Import added
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -55,12 +56,11 @@ async def async_setup_entry(
             MoladYiddishSensor(hass, helper),
             ShabbosMevorchimSensor(hass, helper),
             UpcomingShabbosMevorchimSensor(hass, helper),
+            SpecialShabbosSensor()  # ✅ Registered here properly
         ],
         update_before_add=True,
     )
-    
-from .special_shabbos_sensor import SpecialShabbosSensor
-async_add_entities([SpecialShabbosSensor()], update_before_add=True)
+
 
 class MoladYiddishSensor(SensorEntity):
     """Main Molad Yiddish sensor for month's Molad logic."""
@@ -79,17 +79,11 @@ class MoladYiddishSensor(SensorEntity):
 
     async def async_update(self, now=None) -> None:
         today = date.today()
-
-        # Determine Hebrew day of month
         jdn = gdate_to_jdn(today)
         heb = HebrewDate.from_jdn(jdn)
         heb_day = heb.day
 
-        # Days 1-2 → show current month's molad; Days ≥3 → show upcoming month
-        if heb_day < 3:
-            base_date = today - timedelta(days=15)
-        else:
-            base_date = today
+        base_date = today - timedelta(days=15) if heb_day < 3 else today
 
         try:
             details: MoladDetails = self.helper.get_molad(base_date)
@@ -109,7 +103,6 @@ class MoladYiddishSensor(SensorEntity):
         state_str = f"מולד {day_yd} {tod}, {mi} מינוט און {chal} {chal_txt} נאך {hh12}"
         self._attr_native_value = state_str
 
-        # Build Rosh Chodesh attributes
         loc = LocationInfo(
             name="home",
             region="",
@@ -149,7 +142,6 @@ class MoladYiddishSensor(SensorEntity):
         }
 
     def update(self) -> None:
-        """Legacy sync update."""
         self.hass.async_create_task(self.async_update())
 
     @property
@@ -158,8 +150,6 @@ class MoladYiddishSensor(SensorEntity):
 
 
 class ShabbosMevorchimSensor(BinarySensorEntity):
-    """Binary sensor: is *today* Shabbos Mevorchim?"""
-
     _attr_name = "Shabbos Mevorchim Yiddish"
     _attr_unique_id = "shabbos_mevorchim_yiddish"
     _attr_entity_id = "binary_sensor.shabbos_mevorchim_yiddish"
@@ -187,8 +177,6 @@ class ShabbosMevorchimSensor(BinarySensorEntity):
 
 
 class UpcomingShabbosMevorchimSensor(BinarySensorEntity):
-    """Binary sensor: is the *upcoming* Shabbos Mevorchim?"""
-
     _attr_name = "Upcoming Shabbos Mevorchim Yiddish"
     _attr_unique_id = "upcoming_shabbos_mevorchim_yiddish"
     _attr_entity_id = "binary_sensor.upcoming_shabbos_mevorchim_yiddish"
@@ -213,4 +201,3 @@ class UpcomingShabbosMevorchimSensor(BinarySensorEntity):
     @property
     def icon(self) -> str:
         return "mdi:star-outline"
-        
