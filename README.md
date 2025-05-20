@@ -1,47 +1,65 @@
 # Molad Yiddish Integration for Home Assistant
 
-A custom Home Assistant integration that provides Molad (new moon) and Rosh Chodesh details in Yiddish, including translated day names, month names, and time of day. It also indicates whether the current or upcoming Shabbos is Shabbos Mevorchim.
+A custom Home Assistant integration that provides Molad (new moon), Rosh Chodesh details, and special Shabbos announcements in Yiddish. It includes full Yiddish translations of day names, month names, and times of day.
 
 ## Features
 
-- **Sensor**: `sensor.molad_yiddish` with attributes:
-  - **State**: e.g., `מולד זונטאג ביינאכט, 45 מינוט און 12 חלקים נאך 4` or `מולד זונטאג ביינאכט, 45 מינוט און 1 חלק נאך 4`
-  - **month_name**: Yiddish month (e.g., `טבת`)
-  - **rosh_chodesh_days**: List of Yiddish day names (e.g., `["מאנטאג", "דינסטאג"]`)
-  - **rosh_chodesh_dates**: Gregorian dates (e.g., `["2025-01-01", "2025-01-02"]`)
-  - **is_shabbos_mevorchim**: Boolean indicating if today is Shabbos Mevorchim
-  - **is_upcoming_shabbos_mevorchim**: Boolean indicating if the next Shabbos is Mevorchim
-- **Yiddish Translations**: Days, months, and time of day (e.g., `פארטאגס`, `ביינאכט`).
-- **Dependency**: Uses `hdate[astral]==1.1.0`, compatible with the Jewish Calendar integration.
+- **Sensor**: `sensor.molad_yiddish`  
+  - State: e.g., `מולד זונטאג פארטאגס, 49 מינוט און 15 חלקים נאך 4`
+  - Attributes:
+    - `month_name`: Yiddish month (e.g., `סיון`)
+    - `rosh_chodesh`: Days of Rosh Chodesh (e.g., `מיטוואך`)
+    - `rosh_chodesh_days`: List of days (e.g., `["דינסטאג", "מיטוואך"]`)
+    - `rosh_chodesh_midnight`: Gregorian dates at midnight UTC
+    - `rosh_chodesh_nightfall`: Nightfall times with 72-minute offset
+    - `is_shabbos_mevorchim`: Boolean if *today* is Shabbos Mevorchim
+    - `is_upcoming_shabbos_mevorchim`: Boolean if the *upcoming* Shabbos is Mevorchim
+
+- **Binary Sensors**:
+  - `binary_sensor.shabbos_mevorchim_yiddish`: `on` if today is Shabbos Mevorchim
+  - `binary_sensor.upcoming_shabbos_mevorchim_yiddish`: `on` if upcoming Shabbos is Mevorchim
+
+- **New Sensor**: `sensor.special_shabbos_yiddish`
+  - State: Returns Yiddish string for upcoming Shabbos (from Sunday onward) if it's:
+    - One of: שבת זכור, שבת שקלים, שבת פרה, שבת החודש, שבת הגדול
+    - Or: שבת שובה, שבת נחמו, שבת חזון, שבת חזק
+    - Also includes: מברכים חודש סיון, etc.
+    - Multiple events are joined with `–`
+
+- **Fully Offline**: No external API calls; uses `hdate` and `pyluach`.
+
+- **Hebrew-to-Yiddish Conversion**: Days (`Sunday` → `זונטאג`), months, and time-of-day (e.g., `צופרי`, `ביינאכט`) are all localized.
+
+## Dependencies
+
+Automatically installed:
+- `hdate[astral]==1.1.0`
+- `pyluach==1.2.0`
 
 ## Requirements
 
-- Home Assistant 2023.7 or later
-- Python 3.10 or later
-- `hdate[astral]==1.1.0` (automatically installed)
+- Home Assistant 2023.7+
+- Python 3.10+
 
 ## Installation
 
 ### Via HACS (Recommended)
-
-1. Ensure [HACS](https://hacs.xyz/) is installed in Home Assistant.
-2. Go to **HACS > Integrations > Three dots (top-right) > Custom repositories**.
-3. Add the repository URL: `https://github.com/hitchin999/molad_yiddish` and set category to **Integration**.
-4. Click **Add**, then find `Molad Yiddish` in HACS > Integrations.
-5. Click **Download** and follow prompts to install.
-6. Restart Home Assistant (Settings > System > Restart).
-7. Add the integration via **Settings > Devices & Services > Add Integration > Molad Yiddish**.
+1. Make sure [HACS](https://hacs.xyz/) is installed.
+2. Go to **HACS > Integrations > 3-dots menu > Custom repositories**
+3. Add: `https://github.com/hitchin999/molad_yiddish`, set category to **Integration**
+4. Download and restart Home Assistant.
+5. Go to **Settings > Devices & Services > Add Integration > Molad Yiddish**
 
 ### Manual Installation
+1. Copy the folder `custom_components/molad_yiddish/` to `/config/custom_components/`
+2. Restart Home Assistant
+3. Add integration via **Settings > Devices & Services > Add Integration > Molad Yiddish**
 
-1. Copy the `custom_components/molad_yiddish/` folder to your Home Assistant configuration directory: `/config/custom_components/molad_yiddish/`.
-2. Restart Home Assistant.
-3. Add the integration via **Settings > Devices & Services > Add Integration > Molad Yiddish**.
+## Usage Example
 
-## Usage
-
-- Check `sensor.molad_yiddish` in **Developer Tools > States** to view attributes.
-- Example template for Shabbos announcements:
-  ```yaml
-  שבת מברכים חודש {{ state_attr('sensor.molad_yiddish', 'month_name') }} - ראש חודש, {{ state_attr('sensor.molad_yiddish', 'rosh_chodesh_days') | join(' און ') }}
-  {{ state }}
+```yaml
+type: markdown
+content: >
+  {{ states('sensor.molad_yiddish') }}
+  {{ states('sensor.special_shabbos_yiddish') }}
+  {{ state_attr('sensor.molad_yiddish', 'month_name') }}
