@@ -1,6 +1,6 @@
 from __future__ import annotations
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from astral import LocationInfo
@@ -79,7 +79,7 @@ class MoladYiddishSensor(SensorEntity):
         heb = HebrewDate.from_jdn(jdn)
         heb_day = heb.day
 
-        # ✅ Restore correct molad month logic
+        # Restore correct molad month logic
         if heb_day < 3:
             base_date = today - timedelta(days=15)
         else:
@@ -93,16 +93,14 @@ class MoladYiddishSensor(SensorEntity):
             return
 
         m = details.molad
-        day_yd = DAY_MAPPING[m.day]
         h, mi = m.hours, m.minutes
         ap = m.am_or_pm
         tod = TIME_OF_DAY[ap](h)
         chal = m.chalakim
         chal_txt = "חלק" if chal == 1 else "חלקים"
         hh12 = h % 12 or 12
-        state_str = f"מולד {day_yd} {tod}, {mi} מינוט און {chal} {chal_txt} נאך {hh12}"
-        self._attr_native_value = state_str
 
+        # build location and timezone
         loc = LocationInfo(
             name="home",
             region="",
@@ -112,6 +110,27 @@ class MoladYiddishSensor(SensorEntity):
         )
         tz = ZoneInfo(self.hass.config.time_zone)
 
+        # determine Motzei Shabbos (מוצ"ש) period
+        now_local = now.astimezone(tz) if now else datetime.now(tz)
+        motzei = False
+        if m.day == "Shabbos":
+            sd = sun(loc.observer, date=now_local.date(), tzinfo=tz)
+            motzei_start = sd["sunset"] + timedelta(minutes=72)
+            next_day = now_local.date() + timedelta(days=1)
+            midnight = datetime(next_day.year, next_day.month, next_day.day, tzinfo=tz)
+            if motzei_start <= now_local < midnight:
+                motzei = True
+
+        if motzei:
+            day_yd = 'מוצש"ק'
+            state_str = f"מולד {day_yd}, {mi} מינוט און {chal} {chal_txt} נאך {hh12}"
+        else:
+            day_yd = DAY_MAPPING[m.day]
+            state_str = f"מולד {day_yd} {tod}, {mi} מינוט און {chal} {chal_txt} נאך {hh12}"
+
+        self._attr_native_value = state_str
+
+        # Rosh Chodesh attributes
         rc = details.rosh_chodesh
         rc_midnight = [f"{gd.isoformat()}T00:00:00Z" for gd in rc.gdays]
         rc_nightfall = []
@@ -201,3 +220,4 @@ class UpcomingShabbosMevorchimSensor(BinarySensorEntity):
     @property
     def icon(self) -> str:
         return "mdi:star-outline"
+        
