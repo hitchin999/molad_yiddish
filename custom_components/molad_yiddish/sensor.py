@@ -15,9 +15,9 @@ from hdate.converters import gdate_to_jdn
 from hdate.hebrew_date import HebrewDate
 
 from .molad_lib.helper import MoladHelper, MoladDetails
-from .special_shabbos_sensor import SpecialShabbosSensor
+from .molad_lib.sfirah_helper import SfirahHelper
 from .sfirah_sensor import SefirahCounterYiddish, SefirahCounterMiddosYiddish
-from .molad_lib.sfirah_helper import SfirahHelper  # helper for Omer counters
+from .special_shabbos_sensor import SpecialShabbosSensor
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -54,6 +54,8 @@ async def async_setup_entry(
     molad_helper = MoladHelper(hass.config)
     # Omer (Sefirah) counters use SfirahHelper
     sfirah_helper = SfirahHelper(hass)
+    # Option to strip niqqud from the Omer text
+    strip_nikud = entry.options.get("strip_nikud", False)
 
     async_add_entities(
         [
@@ -62,9 +64,9 @@ async def async_setup_entry(
             UpcomingShabbosMevorchimSensor(hass, molad_helper),
             SpecialShabbosSensor(),
 
-            # —— new Sefirah (Omer) counters —— #
-            SefirahCounterYiddish(sfirah_helper),
-            SefirahCounterMiddosYiddish(sfirah_helper),
+            # —— Sefirah (Omer) counters with optional nikud stripping —— #
+            SefirahCounterYiddish(hass, sfirah_helper, strip_nikud),
+            SefirahCounterMiddosYiddish(hass, sfirah_helper, strip_nikud),
         ],
         update_before_add=True,
     )
@@ -90,10 +92,7 @@ class MoladYiddishSensor(SensorEntity):
         heb_day = heb.day
 
         # Restore correct molad month logic
-        if heb_day < 3:
-            base_date = today - timedelta(days=15)
-        else:
-            base_date = today
+        base_date = today - timedelta(days=15) if heb_day < 3 else today
 
         try:
             details: MoladDetails = self.helper.get_molad(base_date)
