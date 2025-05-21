@@ -1,7 +1,6 @@
 # /config/custom_components/molad_yiddish/sfirah_sensor.py
 
 import logging
-import re
 import unicodedata
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.config_entries import ConfigEntry
@@ -10,6 +9,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_call_later
 
 from .molad_lib.sfirah_helper import SfirahHelper
+from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -20,14 +20,18 @@ def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """
-    Set up the Omer (Sefirah) sensors with optional nikud stripping.
+    Set up the Omer (Sefirah) sensors with optional nikud stripping and user-defined Havdalah offset.
     """
     helper = SfirahHelper(hass)
     strip_nikud = entry.options.get("strip_nikud", False)
+    # Get Havdalah offset from integration options stored in hass.data
+    opts = hass.data[DOMAIN].get(entry.entry_id, {})
+    havdalah_offset = opts.get("havdalah_offset", 72)
+
     async_add_entities(
         [
-            SefirahCounterYiddish(hass, helper, strip_nikud),
-            SefirahCounterMiddosYiddish(hass, helper, strip_nikud),
+            SefirahCounterYiddish(hass, helper, strip_nikud, havdalah_offset),
+            SefirahCounterMiddosYiddish(hass, helper, strip_nikud, havdalah_offset),
         ],
         update_before_add=True,
     )
@@ -43,11 +47,13 @@ class BaseSefirahSensor(SensorEntity):
         name: str,
         unique_id: str,
         strip_nikud: bool,
+        havdalah_offset: int,
     ) -> None:
         super().__init__()
         self.hass = hass
         self._helper = helper
         self._strip = strip_nikud
+        self._havdalah_offset = havdalah_offset
         self._state = None
         self._attr_name = name
         self._attr_unique_id = unique_id
@@ -69,22 +75,24 @@ class BaseSefirahSensor(SensorEntity):
 
     @callback
     def _schedule_after_sunset(self) -> None:
-        """Schedule an update 72 minutes after sunset."""
-        async_call_later(self.hass, 72 * 60, lambda _now: self.async_schedule_update_ha_state())
+        """Schedule an update after Havdalah offset minutes post-sunset."""
+        async_call_later(
+            self.hass, self._havdalah_offset * 60, lambda _now: self.async_schedule_update_ha_state()
+        )
 
     async def async_added_to_hass(self) -> None:
-        """Register for sunset event when added."""
-        # Initial state update
+        """Register for sunset event when added to Home Assistant."""
+        # Trigger initial update
         self.async_schedule_update_ha_state()
 
         def _on_sunset(event):
             self._schedule_after_sunset()
 
-        # Listen for sunset event
+        # Listen for the 'sunset' event
         self._unsub_sun = self.hass.bus.async_listen("sunset", _on_sunset)
 
     async def async_will_remove_from_hass(self) -> None:
-        """Cleanup listener when removed."""
+        """Cleanup the listener when removed from Home Assistant."""
         if self._unsub_sun:
             self._unsub_sun()
 
@@ -92,8 +100,21 @@ class BaseSefirahSensor(SensorEntity):
 class SefirahCounterYiddish(BaseSefirahSensor):
     """Sensor for the Sefirah count in Yiddish text."""
 
-    def __init__(self, hass: HomeAssistant, helper: SfirahHelper, strip_nikud: bool) -> None:
-        super().__init__(hass, helper, "Sefirah Counter Yiddish", "sefirah_counter_yiddish", strip_nikud)
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        helper: SfirahHelper,
+        strip_nikud: bool,
+        havdalah_offset: int,
+    ) -> None:
+        super().__init__(
+            hass,
+            helper,
+            "Sefirah Counter Yiddish",
+            "sefirah_counter_yiddish",
+            strip_nikud,
+            havdalah_offset,
+        )
 
     def _get_text(self) -> str:
         return self._helper.get_sefirah_text()
@@ -102,8 +123,21 @@ class SefirahCounterYiddish(BaseSefirahSensor):
 class SefirahCounterMiddosYiddish(BaseSefirahSensor):
     """Sensor for the Sefirah middos count in Yiddish text."""
 
-    def __init__(self, hass: HomeAssistant, helper: SfirahHelper, strip_nikud: bool) -> None:
-        super().__init__(hass, helper, "Sefirah Counter Middos Yiddish", "sefirah_counter_middos_yiddish", strip_nikud)
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        helper: SfirahHelper,
+        strip_nikud: bool,
+        havdalah_offset: int,
+    ) -> None:
+        super().__init__(
+            hass,
+            helper,
+            "Sefirah Counter Middos Yiddish",
+            "sefirah_counter_middos_yiddish",
+            strip_nikud,
+            havdalah_offset,
+        )
 
     def _get_text(self) -> str:
         return self._helper.get_middos_text()
