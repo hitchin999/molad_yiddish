@@ -9,10 +9,12 @@ from .const import DOMAIN
 
 STEP_USER_DATA_SCHEMA = vol.Schema({})
 
+# Default offsets (minutes)
+DEFAULT_CANDLELIGHT_OFFSET = 15
+DEFAULT_HAVDALAH_OFFSET = 72
 
-class MoladYiddishConfigFlow(
-    config_entries.ConfigFlow, domain=DOMAIN
-):
+
+class MoladYiddishConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Molad Yiddish."""
 
     VERSION = 1
@@ -39,23 +41,34 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
 
     def __init__(self, config_entry):
         """Initialize options flow."""
-        self.config_entry = config_entry
+        self._config_entry = config_entry
 
     async def async_step_init(self, user_input=None):
-        """Show the form to toggle stripping of nikud."""
+        """Show the form for integration options."""
         if user_input is None:
-            return self.async_show_form(
-                step_id="init",
-                data_schema=vol.Schema(
-                    {
-                        vol.Optional(
-                            "strip_nikud",
-                            default=self.config_entry.options.get(
-                                "strip_nikud", False
-                            ),
-                        ): bool,
-                    }
-                ),
+            # Build a form that includes your existing strip_nikud toggle
+            # plus the two new offset fields.
+            schema = vol.Schema(
+                {
+                    vol.Optional(
+                        "strip_nikud",
+                        default=self._config_entry.options.get("strip_nikud", False),
+                    ): bool,
+                    vol.Optional(
+                        "candlelighting_offset",
+                        default=self.config_entry.options.get(
+                            "candlelighting_offset", DEFAULT_CANDLELIGHT_OFFSET
+                        ),
+                    ): int,
+                    vol.Optional(
+                        "havdalah_offset",
+                        default=self.config_entry.options.get(
+                            "havdalah_offset", DEFAULT_HAVDALAH_OFFSET
+                        ),
+                    ): int,
+                }
             )
+            return self.async_show_form(step_id="init", data_schema=schema)
 
+        # User submitted the form: save all three options
         return self.async_create_entry(title="", data=user_input)
