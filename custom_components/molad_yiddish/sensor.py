@@ -56,11 +56,15 @@ async def async_setup_entry(
 ) -> None:
     """Set up Molad Yiddish and related sensors with user-configurable offsets."""
     molad_helper = MoladHelper(hass.config)
-    sfirah_helper = SfirahHelper(hass)
-    strip_nikud = entry.options.get("strip_nikud", False)
+
+    # Pull user-configured offsets
     opts = hass.data[DOMAIN][entry.entry_id]
     candle_offset = opts.get("candlelighting_offset", 15)
     havdalah_offset = opts.get("havdalah_offset", 72)
+
+    # Prepare helpers
+    sfirah_helper = SfirahHelper(hass, havdalah_offset)
+    strip_nikud = entry.options.get("strip_nikud", False)
 
     async_add_entities([
         MoladYiddishSensor(hass, molad_helper, candle_offset, havdalah_offset),
@@ -70,6 +74,7 @@ async def async_setup_entry(
         SpecialShabbosSensor(),
         SefirahCounterYiddish(hass, sfirah_helper, strip_nikud, havdalah_offset),
         SefirahCounterMiddosYiddish(hass, sfirah_helper, strip_nikud, havdalah_offset),
+        RoshChodeshTodaySensor(hass, molad_helper, havdalah_offset),
     ], update_before_add=True)
 
 
@@ -116,9 +121,11 @@ class MoladYiddishSensor(SensorEntity):
 
         tz = ZoneInfo(self.hass.config.time_zone)
         now_local = now.astimezone(tz) if now else datetime.now(tz)
-        loc = LocationInfo(latitude=self.hass.config.latitude,
-                           longitude=self.hass.config.longitude,
-                           timezone=self.hass.config.time_zone)
+        loc = LocationInfo(
+            latitude=self.hass.config.latitude,
+            longitude=self.hass.config.longitude,
+            timezone=self.hass.config.time_zone,
+        )
 
         # Determine if it's Motzaei Shabbos
         motzei = False
@@ -189,17 +196,20 @@ class YiddishDayLabelSensor(SensorEntity):
         self.hass = hass
         self._candle = candle_offset
         self._havdalah = havdalah_offset
-        self._state = None
+        self._state: str | None = None
+        async_track_time_interval(hass, self.async_update, timedelta(hours=1))
 
     @property
-    def native_value(self):
+    def native_value(self) -> str | None:
         return self._state
 
     async def async_update(self, now=None) -> None:
         tz = ZoneInfo(self.hass.config.time_zone)
-        loc = LocationInfo(latitude=self.hass.config.latitude,
-                           longitude=self.hass.config.longitude,
-                           timezone=self.hass.config.time_zone)
+        loc = LocationInfo(
+            latitude=self.hass.config.latitude,
+            longitude=self.hass.config.longitude,
+            timezone=self.hass.config.time_zone,
+        )
         current = datetime.now(tz)
         s = sun(loc.observer, date=current.date(), tzinfo=tz)
         candle = s["sunset"] - timedelta(minutes=self._candle)
@@ -223,9 +233,9 @@ class YiddishDayLabelSensor(SensorEntity):
         elif is_tov:
             lbl = "יום טוב"
         elif wd == 4 and current.hour >= 12:
-            lbl = "ערש\"ק"
+            lbl = 'ערש\"ק'
         elif wd == 5 and current >= havdalah:
-            lbl = "מוצש\"ק"
+            lbl = 'מוצש\"ק'
         else:
             days = ["זונטאג","מאנטאג","דינסטאג","מיטוואך","דאנערשטאג","פרייטאג","שבת"]
             idx = {6:0,0:1,1:2,2:3,3:4,4:5,5:6}[wd]
@@ -289,3 +299,56 @@ class UpcomingShabbosMevorchimSensor(BinarySensorEntity):
     @property
     def icon(self) -> str:
         return "mdi:star-outline"
+
+
+class RoshChodeshTodaySensor(SensorEntity):
+    """Reports if today is Rosh Chodesh in Yiddish (א or ב)."""
+
+    _attr_name = "Rosh Chodesh Today Yiddish"
+    _attr_unique_id = "rosh_chodesh_today_yiddish"
+    _attr_icon = "mdi:calendar-star"
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        helper: MoladHelper,
+        havdalah_offset: int,
+    ) -> None:
+        super().__init__()
+        self.hass = hass
+        self.helper = helper
+        self._havdalah_offset = havdalah_offset
+        self._attr_native_value = None
+        async_track_time_interval(hass, self.async_update, timedelta(hours=1))
+
+    async def async_update(self, now=None) -> None:
+        # Get the main molad sensor attributes
+        main = self.hass.states.get("sensor.molad_yiddish")
+        attr = main.attributes if main else {}
+        nf_list = attr.get("rosh_chodesh_nightfall") or []
+        month = attr.get("month_name", "")
+        today = date.today()
+
+        dates: list[date] = []
+        for item in nf_list:
+            if isinstance(item, datetime):
+                dates.append(item.date())
+            else:
+                dates.append(datetime.fromisoformat(item).date())
+
+        if today in dates:
+            idx = dates.index(today)
+            if len(dates) == 1:
+                val = f"ראש חודש {month}"
+            else:
+                prefix = ["א","ב"][idx] + "׳"
+                val = f"{prefix} ראש חודש {month}"
+        else:
+            val = "Not Rosh Chodesh Today"
+
+        self._attr_native_value = val
+
+    @property
+    def available(self) -> bool:
+        main = self.hass.states.get("sensor.molad_yiddish")
+        return bool(main and main.attributes.get("rosh_chodesh_nightfall"))
