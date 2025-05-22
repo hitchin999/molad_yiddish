@@ -22,11 +22,13 @@ def async_setup_entry(
     """
     Set up the Omer (Sefirah) sensors with optional nikud stripping and user-defined Havdalah offset.
     """
-    helper = SfirahHelper(hass)
-    strip_nikud = entry.options.get("strip_nikud", False)
-    # Get Havdalah offset from integration options stored in hass.data
+    # Pull the Havdalah offset the user set in Options
     opts = hass.data[DOMAIN].get(entry.entry_id, {})
     havdalah_offset = opts.get("havdalah_offset", 72)
+    # Pass that offset into the helper
+    helper = SfirahHelper(hass, havdalah_offset)
+
+
 
     async_add_entities(
         [
