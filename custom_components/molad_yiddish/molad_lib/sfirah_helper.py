@@ -124,28 +124,34 @@ SEFIRA_MIDDOS = [
 class SfirahHelper:
     """
     Compute Omer count and corresponding Hebrew texts based on Hebrew date
-    and sunset + 72 minutes.
+    and sunset + user-defined Havdalah offset.
     """
-    def __init__(self, hass: HomeAssistant):
+
+    def __init__(self, hass: HomeAssistant, havdalah_offset: int):
         self.hass = hass
         self.latitude = hass.config.latitude
         self.longitude = hass.config.longitude
         self.time_zone = hass.config.time_zone
+        # Store the user’s offset instead of hard-coding 72
+        self._havdalah_offset = havdalah_offset
 
     def _get_threshold(self, for_date: date) -> datetime:
-        """Return the datetime of sunset + 72 minutes for the given date."""
+        """Return the datetime of sunset + user-defined offset for the given date."""
         loc = LocationInfo(
-            name="", region="", timezone=self.time_zone,
-            latitude=self.latitude, longitude=self.longitude
+            name="",
+            region="",
+            timezone=self.time_zone,
+            latitude=self.latitude,
+            longitude=self.longitude,
         )
         s = sun(loc.observer, date=for_date, tzinfo=dt_util.DEFAULT_TIME_ZONE)
-        return s["sunset"] + timedelta(minutes=72)
+        return s["sunset"] + timedelta(minutes=self._havdalah_offset)
 
     def _get_raw_omer_day(self, for_date: date) -> int:
         """Calculate raw Omer day (1–49) based on the Hebrew date."""
         jdn = gdate_to_jdn(for_date)
         heb = HebrewDate.from_jdn(jdn)
-        month_name = str(heb.month)  # e.g. "ניסן", "אייר", "סיון"
+        month_name = str(heb.month)
         day = heb.day
         # Nisan 16–30 → 1–15
         if month_name == "ניסן" and day >= 16:
@@ -160,11 +166,12 @@ class SfirahHelper:
 
     def get_effective_omer_day(self) -> int:
         """
-        Compute the final Omer day, bumping by one after sunset + 72 minutes.
+        Compute the final Omer day, bumping by one after sunset + user-defined Havdalah.
         Returns an integer 0–49 (0 means before Omer).
         """
         today = dt_util.now().date()
         raw = self._get_raw_omer_day(today)
+        # Use the new, configurable threshold
         if dt_util.now() >= self._get_threshold(today):
             raw += 1
         return max(0, min(raw, len(SEFIRA_TEXTS) - 1))
