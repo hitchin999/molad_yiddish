@@ -51,17 +51,17 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             schema = vol.Schema(
                 {
                     vol.Optional(
-                        "strip_nikud",
+                        "נעם אראפ די נְקֻודּוֹת",
                         default=self._config_entry.options.get("strip_nikud", False),
                     ): bool,
                     vol.Optional(
-                        "candlelighting_offset",
+                        "וויפיל מינוט פארן שקיעה איז הדלקת הנירות",
                         default=self.config_entry.options.get(
                             "candlelighting_offset", DEFAULT_CANDLELIGHT_OFFSET
                         ),
                     ): int,
                     vol.Optional(
-                        "havdalah_offset",
+                        "וויפיל מינוט נאכן שקיעה איז מוצאי",
                         default=self.config_entry.options.get(
                             "havdalah_offset", DEFAULT_HAVDALAH_OFFSET
                         ),
