@@ -10,7 +10,10 @@ from homeassistant.components.sensor import SensorEntity
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.event import (
+    async_track_time_interval,
+    async_track_state_change,
+)
 
 from hdate.converters import gdate_to_jdn
 from hdate.hebrew_date import HebrewDate
@@ -302,24 +305,28 @@ class UpcomingShabbosMevorchimSensor(BinarySensorEntity):
 
 
 class RoshChodeshTodaySensor(SensorEntity):
-    """Reports if today is Rosh Chodesh in Yiddish (א or ב)."""
+    """Reports if right now is within a Rosh Chodesh interval in Yiddish (א or ב)."""
 
     _attr_name = "Rosh Chodesh Today Yiddish"
     _attr_unique_id = "rosh_chodesh_today_yiddish"
     _attr_icon = "mdi:calendar-star"
 
-    def __init__(
-        self,
-        hass: HomeAssistant,
-        helper: MoladHelper,
-        havdalah_offset: int,
-    ) -> None:
+    def __init__(self, hass: HomeAssistant, helper: MoladHelper, havdalah_offset: int) -> None:
         super().__init__()
         self.hass = hass
         self.helper = helper
         self._havdalah_offset = havdalah_offset
         self._attr_native_value = None
+
+        # 1) hourly fallback (in case nothing else fires)
         async_track_time_interval(hass, self.async_update, timedelta(hours=1))
+
+        # 2) immediate reaction any time sensor.molad_yiddish changes
+        async_track_state_change(
+            hass,
+            "sensor.molad_yiddish",
+            lambda *_: self.async_schedule_update_ha_state(),
+        )
 
     async def async_update(self, now=None) -> None:
         # Get the main molad sensor attributes
@@ -339,10 +346,10 @@ class RoshChodeshTodaySensor(SensorEntity):
         if today in dates:
             idx = dates.index(today)
             if len(dates) == 1:
-                val = f"ראש חודש {month}"
+              val = f"ראש חודש {month}"
             else:
-                prefix = ["א","ב"][idx] + "׳"
-                val = f"{prefix} ראש חודש {month}"
+              prefix = ["א", "ב"][idx] + "׳"
+              val = f"{prefix} ד׳ראש חודש {month}"
         else:
             val = "Not Rosh Chodesh Today"
 
