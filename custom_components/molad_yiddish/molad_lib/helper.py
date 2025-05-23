@@ -1,4 +1,3 @@
-#homeassistant/custom_components/molad_yiddish/molad_lib/helper.py
 """
 Vendored MoladHelper using pyluach for accurate molad calculations.
 
@@ -11,10 +10,15 @@ import logging
 
 import hdate
 import hdate.converters
-from hdate.hebrew_date import Months, HebrewDate, is_shabbat
+from hdate.hebrew_date import Months, HebrewDate
 from pyluach.hebrewcal import Month as PMonth
 
 _LOGGER = logging.getLogger(__name__)
+
+def is_shabbat(pydate: datetime.date) -> bool:
+    """Return True if the given date is Shabbat (Saturday)."""
+    # Python weekday(): Monday=0 … Sunday=6
+    return pydate.weekday() == 5
 
 # Mapping from hdate.Months.name to pyluach month number (1=Nissan … 13=Adar II)
 _HD2PY = {
@@ -75,12 +79,12 @@ class MoladHelper:
 
         return Molad(day_name, h12, mins, ampm, parts, friendly)
 
-    def get_numeric_month_year(self, date):
+    def get_numeric_month_year(self, date: datetime.date):
         j = hdate.converters.gdate_to_jdn(date)
         h = HebrewDate.from_jdn(j)
         return {"year": h.year, "month": h.month.value}
 
-    def get_next_numeric_month_year(self, date):
+    def get_next_numeric_month_year(self, date: datetime.date):
         d = self.get_numeric_month_year(date)
         y, m = d["year"], d["month"]
         if m == 12 and not HebrewDate(y, m, 1).is_leap_year():
@@ -91,16 +95,16 @@ class MoladHelper:
             m += 1
         return {"year": y, "month": m}
 
-    def get_gdate(self, numeric_date, day):
+    def get_gdate(self, numeric_date, day: int):
         hd = hdate.HebrewDate(numeric_date["year"], numeric_date["month"], day)
         jdn = hd.to_jdn()
         return hdate.converters.jdn_to_gdate(jdn)
 
-    def get_day_of_week(self, g):
+    def get_day_of_week(self, g: datetime.date) -> str:
         wd = g.strftime("%A")
         return "Shabbos" if wd == "Saturday" else wd
 
-    def get_rosh_chodesh_days(self, date) -> RoshChodesh:
+    def get_rosh_chodesh_days(self, date: datetime.date) -> RoshChodesh:
         this_m = self.get_numeric_month_year(date)
         next_m = self.get_next_numeric_month_year(date)
         mon = Months(next_m["month"]).name.title()
@@ -121,7 +125,7 @@ class MoladHelper:
         text = " & ".join(days) if len(days) == 2 else days[0]
         return RoshChodesh(mon, text, days, gdays)
 
-    def get_shabbos_mevorchim_hebrew_day_of_month(self, date):
+    def get_shabbos_mevorchim_hebrew_day_of_month(self, date: datetime.date):
         gdays = self.get_rosh_chodesh_days(date).gdays
         if not gdays:
             return None
@@ -130,7 +134,7 @@ class MoladHelper:
         sat = rc - datetime.timedelta(days=days_back)
         return HebrewDate.from_gdate(sat).day
 
-    def is_shabbos_mevorchim(self, date) -> bool:
+    def is_shabbos_mevorchim(self, date: datetime.date) -> bool:
         if not is_shabbat(date):
             return False
         hd = HebrewDate.from_gdate(date).day
@@ -138,16 +142,17 @@ class MoladHelper:
         month = self.get_numeric_month_year(date)["month"]
         return (hd == smd) and (month != Months.ELUL.value)
 
-    def is_upcoming_shabbos_mevorchim(self, date) -> bool:
+    def is_upcoming_shabbos_mevorchim(self, date: datetime.date) -> bool:
         sat = date + datetime.timedelta(days=(5 - date.weekday()) % 7 or 7)
         return self.is_shabbos_mevorchim(sat)
 
-    def get_molad(self, date) -> MoladDetails:
+    def get_molad(self, date: datetime.date) -> MoladDetails:
         m = self.get_actual_molad(date)
         ism = self.is_shabbos_mevorchim(date)
         isu = self.is_upcoming_shabbos_mevorchim(date)
         rc = self.get_rosh_chodesh_days(date)
         return MoladDetails(m, ism, isu, rc)
+
 def int_to_hebrew(num: int) -> str:
     """
     Convert an integer (1–400+) into Hebrew letters with geresh/gershayim.
@@ -167,6 +172,6 @@ def int_to_hebrew(num: int) -> str:
             num -= value
     # add gershayim for multi-letter, geresh for single
     if len(result) > 1:
-        return f"{result[:-1]}״{result[-1]}"
+        return f"{result[:-1]}”“{result[-1]}"
     return f"{result}׳"
     
