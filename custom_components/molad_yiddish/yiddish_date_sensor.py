@@ -1,0 +1,118 @@
+from __future__ import annotations
+import logging
+from datetime import date, timedelta
+
+from homeassistant.components.sensor import SensorEntity
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.event import async_track_time_interval, async_track_sunset
+
+from pyluach.hebrewcal import Year, HebrewDate as PHebrewDate
+
+_LOGGER = logging.getLogger(__name__)
+
+# ————————————————
+# Helper: convert integers to Hebrew numerals
+# ————————————————
+def int_to_hebrew(num: int) -> str:
+    heb = [
+        (400, "ת"), (300, "ש"), (200, "ר"), (100, "ק"),
+        (90, "צ"),  (80, "פ"),  (70, "ע"),  (60, "ס"),  (50, "נ"),
+        (40, "מ"),  (30, "ל"),  (20, "כ"),  (10, "י"),
+        (9, "ט"),   (8, "ח"),   (7, "ז"),   (6, "ו"),   (5, "ה"),
+        (4, "ד"),   (3, "ג"),   (2, "ב"),   (1, "א"),
+    ]
+    result = ""
+    for val, let in heb:
+        while num >= val:
+            num -= val
+            result += let
+    # gershayim for multi-letter, geresh for single
+    if len(result) > 1:
+        return f"{result[:-1]}\u05F4{result[-1]}"
+    return f"{result}\u05F3"
+
+
+# ————————————————
+# Month names in Hebrew (no niqqud) for the 11 standard slots
+# (Tishrei → Elul)
+# ————————————————
+MONTHS = {
+    1:  "תשרי",
+    2:  "חשוון",
+    3:  "כסלו",
+    4:  "טבת",
+    5:  "שבט",
+    # 6 & 7 are Adar in non-leap or Adar I/II in leap, handled below
+    8:  "ניסן",
+    9:  "אייר",
+    10: "סיוון",
+    11: "תמוז",
+    12: "אב",
+    13: "אלול",
+}
+
+
+def get_hebrew_month_name(month: int, year: int) -> str:
+    """Return the correct month name, handling leap years with two Adars."""
+    yr = Year(year)
+    if yr.leap:
+        if month == 6:
+            return "אדר א׳"
+        if month == 7:
+            return "אדר ב׳"
+    else:
+        if month == 6:
+            return "אדר"
+    # All other months (Tishrei=1, Cheshvan=2, … Elul=13)
+    return MONTHS.get(month, "")
+
+
+class YiddishDateSensor(SensorEntity):
+    """Today's Hebrew date in Yiddish formatting,
+       updates at 00:00 and at sunset+havdalah_offset."""
+
+    _attr_name = "Yiddish Date"
+    _attr_unique_id = "yiddish_date"
+    _attr_icon = "mdi:calendar-range"
+
+    def __init__(self, hass: HomeAssistant, havdalah_offset: int) -> None:
+        super().__init__()
+        self.hass = hass
+        self._havdalah_offset = havdalah_offset
+        self._state: str | None = None
+
+    async def async_added_to_hass(self) -> None:
+        # 1) initial fill
+        await self._update_state()
+
+        # 2) update just after local midnight
+        async_track_time_interval(
+            self.hass,
+            lambda now: self.hass.async_create_task(self._update_state()),
+            timedelta(days=1, seconds=5),
+        )
+
+        # 3) update at sunset + havdalah_offset
+        async_track_sunset(
+            self.hass,
+            lambda now: self.hass.async_create_task(self._update_state()),
+            offset=timedelta(minutes=self._havdalah_offset),
+        )
+
+    @property
+    def state(self) -> str:
+        return self._state or ""
+
+    async def _update_state(self) -> None:
+        today = date.today()
+        heb = PHebrewDate.from_pydate(today)
+
+        # day → Hebrew numerals
+        day_heb = int_to_hebrew(heb.day)
+        # month → handles Adar I/II
+        month_heb = get_hebrew_month_name(heb.month, heb.year)
+        # year → last three digits (e.g. 5785 → 785 → תשפ״ה)
+        year_num = heb.year % 1000
+        year_heb = int_to_hebrew(year_num)
+
+        self._state = f"{day_heb} {month_heb} {year_heb}"
