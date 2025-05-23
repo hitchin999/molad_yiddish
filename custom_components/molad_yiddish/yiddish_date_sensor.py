@@ -1,3 +1,4 @@
+# homeassistant/custom_components/molad_yiddish/yiddish_date_sensor.py
 from __future__ import annotations
 import logging
 from datetime import date, timedelta
@@ -7,30 +8,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.event import async_track_time_interval, async_track_sunset
 
 from pyluach.hebrewcal import Year, HebrewDate as PHebrewDate
+from .molad_lib.helper import int_to_hebrew
 
 _LOGGER = logging.getLogger(__name__)
-
-# ————————————————
-# Helper: convert integers to Hebrew numerals
-# ————————————————
-def int_to_hebrew(num: int) -> str:
-    heb = [
-        (400, "ת"), (300, "ש"), (200, "ר"), (100, "ק"),
-        (90, "צ"),  (80, "פ"),  (70, "ע"),  (60, "ס"),  (50, "נ"),
-        (40, "מ"),  (30, "ל"),  (20, "כ"),  (10, "י"),
-        (9, "ט"),   (8, "ח"),   (7, "ז"),   (6, "ו"),   (5, "ה"),
-        (4, "ד"),   (3, "ג"),   (2, "ב"),   (1, "א"),
-    ]
-    result = ""
-    for val, let in heb:
-        while num >= val:
-            num -= val
-            result += let
-    # gershayim for multi-letter, geresh for single
-    if len(result) > 1:
-        return f"{result[:-1]}\u05F4{result[-1]}"
-    return f"{result}\u05F3"
-
 
 def get_hebrew_month_name(month: int, year: int) -> str:
     """
@@ -110,3 +90,4 @@ class YiddishDateSensor(SensorEntity):
         year_heb = int_to_hebrew(year_num)
 
         self._state = f"{day_heb} {month_heb} {year_heb}"
+        self.async_write_ha_state()
