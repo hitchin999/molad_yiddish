@@ -29,6 +29,7 @@ from .sfirah_sensor import SefirahCounterYiddish, SefirahCounterMiddosYiddish
 from .special_shabbos_sensor import SpecialShabbosSensor
 from .parsha_sensor import ParshaYiddishSensor
 from .yiddish_date_sensor import YiddishDateSensor
+from .perek_avot_sensor import PerekAvotSensor
 
 
 from .const import DOMAIN
@@ -87,6 +88,7 @@ async def async_setup_entry(
         RoshChodeshTodaySensor(hass, molad_helper, havdalah_offset),
         ParshaYiddishSensor(hass),
         YiddishDateSensor(hass, havdalah_offset),
+        PerekAvotSensor(hass),
     ], update_before_add=True)
 
 
@@ -387,3 +389,4 @@ class RoshChodeshTodaySensor(SensorEntity):
     def available(self) -> bool:
         main = self.hass.states.get("sensor.molad_yiddish")
         return bool(main and main.attributes.get("rosh_chodesh_nightfall"))
+    
