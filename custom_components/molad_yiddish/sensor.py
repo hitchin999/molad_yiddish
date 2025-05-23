@@ -6,17 +6,19 @@ from zoneinfo import ZoneInfo
 
 from astral import LocationInfo
 from astral.sun import sun
-from homeassistant.components.sensor import SensorEntity
+
 from homeassistant.components.binary_sensor import BinarySensorEntity
+from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.event import (
     async_track_time_interval,
-    async_track_state_change,
+    async_track_state_change_event,
+    async_track_sunset,
 )
 
 from hdate.converters import gdate_to_jdn
-from hdate.hebrew_date import HebrewDate
+from hdate.hebrew_date import HebrewDate as HHebrewDate
 
 import pyluach.dates as pdates
 from pyluach.hebrewcal import HebrewDate as PHebrewDate
@@ -25,9 +27,14 @@ from .molad_lib.helper import MoladHelper, MoladDetails
 from .molad_lib.sfirah_helper import SfirahHelper
 from .sfirah_sensor import SefirahCounterYiddish, SefirahCounterMiddosYiddish
 from .special_shabbos_sensor import SpecialShabbosSensor
+from .parsha_sensor import ParshaYiddishSensor
+from .yiddish_date_sensor import YiddishDateSensor
+
+
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
+
 
 DAY_MAPPING = {
     "Sunday": "זונטאג",
@@ -78,6 +85,8 @@ async def async_setup_entry(
         SefirahCounterYiddish(hass, sfirah_helper, strip_nikud, havdalah_offset),
         SefirahCounterMiddosYiddish(hass, sfirah_helper, strip_nikud, havdalah_offset),
         RoshChodeshTodaySensor(hass, molad_helper, havdalah_offset),
+        ParshaYiddishSensor(hass),
+        YiddishDateSensor(hass, havdalah_offset),
     ], update_before_add=True)
 
 
@@ -105,7 +114,7 @@ class MoladYiddishSensor(SensorEntity):
     async def async_update(self, now=None) -> None:
         today = date.today()
         jdn = gdate_to_jdn(today)
-        heb = HebrewDate.from_jdn(jdn)
+        heb = HHebrewDate.from_jdn(jdn)
         base_date = today - timedelta(days=15) if heb.day < 3 else today
 
         try:
@@ -318,14 +327,33 @@ class RoshChodeshTodaySensor(SensorEntity):
         self._havdalah_offset = havdalah_offset
         self._attr_native_value = None
 
-        # 1) hourly fallback (in case nothing else fires)
-        async_track_time_interval(hass, self.async_update, timedelta(hours=1))
+    async def async_added_to_hass(self) -> None:
+        # 1) ensure base is set up (entity_id exists)
+        await super().async_added_to_hass()
 
-        # 2) immediate reaction any time sensor.molad_yiddish changes
-        async_track_state_change(
-            hass,
+        # 2) initial population
+        await self.async_update()
+
+        # 3) schedule hourly updates
+        async_track_time_interval(
+            self.hass,
+            lambda now: self.hass.async_create_task(self.async_update()),
+            timedelta(hours=1),
+        )
+
+        # 4) reschedule whenever the molad sensor itself changes
+        async_track_state_change_event(
+            self.hass,
             "sensor.molad_yiddish",
-            lambda *_: self.async_schedule_update_ha_state(),
+        # callback signature: event, entity_id, old_state, new_state
+        lambda _event, _entity, _old, _new: self.hass.async_create_task(self.async_update()),
+        )
+        
+         # 5) schedule a run at today's sunset + havdalah_offset
+        async_track_sunset(
+            self.hass,
+            lambda now: self.hass.async_create_task(self.async_update()),
+            offset=timedelta(minutes=self._havdalah_offset),
         )
 
     async def async_update(self, now=None) -> None:
