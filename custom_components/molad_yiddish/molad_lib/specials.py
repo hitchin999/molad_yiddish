@@ -96,4 +96,4 @@ def get_special_shabbos_name(today: date = None) -> str:
         if month_name:
             events.append(f"מברכים חודש {month_name}")
 
-    return " – ".join(events) if events else ""
+    return "-".join(events) if events else ""
