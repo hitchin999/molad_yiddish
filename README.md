@@ -10,7 +10,8 @@ A custom Home Assistant integration that provides:
 * **Special Shabbos** sensor for Shabbat specials (שבת זכור, שבת נחמו, etc.)
 * **Sefiras HaOmer** counters in Yiddish with the option to Remove Nekides (הַיּוֹם אַרְבָּעִים יוֹם שֶׁהֵם חֲמִשָּׁה שָׁבוּעוֹת וַחֲמִשָּׁה יָמִים לָעֹֽמֶר and הוֹד שֶׁבְּיְסוֹד)
 * **Yiddish Day Label**: a daily label in Yiddish (זונטאג, מאנטאג)
-* **Yiddish Date**: current Hebrew date rendered in כ״ה חשוון תשפ״ה
+* **Yiddish Date**: current Hebrew date rendered in כ״ה חשון תשפ״ה
+* **Perek Avos**: current Perek rendered in אבות פרק ה'
 
 All date calculations are standalone (no external Jewish-calendar integration) and use your Home Assistant latitude, longitude & timezone.
 
