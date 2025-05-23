@@ -1,3 +1,4 @@
+#homeassistant/custom_components/molad_yiddish/molad_lib/helper.py
 """
 Vendored MoladHelper using pyluach for accurate molad calculations.
 
@@ -147,3 +148,25 @@ class MoladHelper:
         isu = self.is_upcoming_shabbos_mevorchim(date)
         rc = self.get_rosh_chodesh_days(date)
         return MoladDetails(m, ism, isu, rc)
+def int_to_hebrew(num: int) -> str:
+    """
+    Convert an integer (1–400+) into Hebrew letters with geresh/gershayim.
+    E.g. 5 → 'ה׳', 15 → 'טו״', 100 → 'ק׳'
+    """
+    mapping = [
+        (400, "ת"), (300, "ש"), (200, "ר"), (100, "ק"),
+        (90, "צ"),  (80, "פ"),  (70, "ע"),  (60, "ס"),  (50, "נ"),
+        (40, "מ"),  (30, "ל"),  (20, "כ"),  (10, "י"),
+        (9,  "ט"),  (8,  "ח"),  (7,  "ז"),  (6,  "ו"),  (5,  "ה"),
+        (4,  "ד"),  (3,  "ג"),  (2,  "ב"),  (1,  "א"),
+    ]
+    result = ""
+    for value, letter in mapping:
+        while num >= value:
+            result += letter
+            num -= value
+    # add gershayim for multi-letter, geresh for single
+    if len(result) > 1:
+        return f"{result[:-1]}״{result[-1]}"
+    return f"{result}׳"
+    
