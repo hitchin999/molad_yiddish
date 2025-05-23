@@ -32,39 +32,33 @@ def int_to_hebrew(num: int) -> str:
     return f"{result}\u05F3"
 
 
-# ————————————————
-# Month names in Hebrew (no niqqud) for the 11 standard slots
-# (Tishrei → Elul)
-# ————————————————
-MONTHS = {
-    1:  "תשרי",
-    2:  "חשוון",
-    3:  "כסלו",
-    4:  "טבת",
-    5:  "שבט",
-    # 6 & 7 are Adar in non-leap or Adar I/II in leap, handled below
-    8:  "ניסן",
-    9:  "אייר",
-    10: "סיוון",
-    11: "תמוז",
-    12: "אב",
-    13: "אלול",
-}
-
-
 def get_hebrew_month_name(month: int, year: int) -> str:
-    """Return the correct month name, handling leap years with two Adars."""
-    yr = Year(year)
-    if yr.leap:
-        if month == 6:
-            return "אדר א׳"
-        if month == 7:
-            return "אדר ב׳"
-    else:
-        if month == 6:
-            return "אדר"
-    # All other months (Tishrei=1, Cheshvan=2, … Elul=13)
-    return MONTHS.get(month, "")
+    """
+    Map Pyluach month-numbers to Hebrew month names, handling leap years:
+      1=Nisan,2=Iyar,3=Sivan,4=Tammuz,5=Av,6=Elul,
+      7=Tishrei,8=Cheshvan,9=Kislev,10=Tevet,11=Shevat,
+      12=Adar I (or Adar in non-leap), 13=Adar II
+    """
+    # Adar logic
+    if month == 12:
+        return "אדר א׳" if Year(year).leap else "אדר"
+    if month == 13:
+        return "אדר ב׳"
+
+    # The rest of the months
+    return {
+        1:  "ניסן",
+        2:  "אייר",
+        3:  "סיון",
+        4:  "תמוז",
+        5:  "אב",
+        6:  "אלול",
+        7:  "תשרי",
+        8:  "חשון",
+        9:  "כסלו",
+        10: "טבת",
+        11: "שבט",
+    }.get(month, "")
 
 
 class YiddishDateSensor(SensorEntity):
@@ -109,7 +103,7 @@ class YiddishDateSensor(SensorEntity):
 
         # day → Hebrew numerals
         day_heb = int_to_hebrew(heb.day)
-        # month → handles Adar I/II
+        # month → accurate name including Adar I/II
         month_heb = get_hebrew_month_name(heb.month, heb.year)
         # year → last three digits (e.g. 5785 → 785 → תשפ״ה)
         year_num = heb.year % 1000
