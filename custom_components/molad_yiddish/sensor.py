@@ -1,4 +1,4 @@
-# /config/custom_components/molad_yiddish/sensor.py
+#/config/custom_components/molad_yiddish/sensor.py
 from __future__ import annotations
 import logging
 from datetime import date, datetime, timedelta
@@ -80,7 +80,7 @@ async def async_setup_entry(
     async_add_entities([
         MoladYiddishSensor(hass, molad_helper, candle_offset, havdalah_offset),
         YiddishDayLabelSensor(hass, candle_offset, havdalah_offset),
-        ShabbosMevorchimSensor(hass, molad_helper),
+        ShabbosMevorchimSensor(hass, molad_helper, candle_offset, havdalah_offset),
         UpcomingShabbosMevorchimSensor(hass, molad_helper),
         SpecialShabbosSensor(),
         SefirahCounterYiddish(hass, sfirah_helper, strip_nikud, havdalah_offset),
@@ -266,19 +266,44 @@ class ShabbosMevorchimSensor(BinarySensorEntity):
     _attr_unique_id = "shabbos_mevorchim_yiddish"
     _attr_entity_id = "binary_sensor.shabbos_mevorchim_yiddish"
 
-    def __init__(self, hass: HomeAssistant, helper: MoladHelper) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        helper: MoladHelper,
+        candle_offset: int,
+        havdalah_offset: int,
+    ) -> None:
         super().__init__()
         self.hass = hass
         self.helper = helper
+        self._candle_offset = candle_offset
+        self._havdalah_offset = havdalah_offset        
         self._attr_is_on = False
         async_track_time_interval(hass, self.async_update, timedelta(hours=1))
 
     async def async_update(self, now=None) -> None:
         try:
-            self._attr_is_on = self.helper.get_molad(date.today()).is_shabbos_mevorchim
+            # build your location & timezone
+            tz = ZoneInfo(self.hass.config.time_zone)
+            loc = LocationInfo(
+                latitude=self.hass.config.latitude,
+                longitude=self.hass.config.longitude,
+                timezone=self.hass.config.time_zone,
+            )
+            s = sun(loc.observer, date=date.today(), tzinfo=tz)
+
+            # compute on/off times
+            on_time = s["sunset"] + timedelta(minutes=self._candle_offset)
+            off_time = s["sunset"] + timedelta(minutes=self._havdalah_offset)
+
+            # compare to now
+            now_local = datetime.now(tz)
+            self._attr_is_on = (on_time <= now_local < off_time)
+
         except Exception as e:
             _LOGGER.error("Shabbos Mevorchim failed: %s", e)
             self._attr_is_on = False
+
 
     def update(self) -> None:
         self.hass.async_create_task(self.async_update())
@@ -389,4 +414,3 @@ class RoshChodeshTodaySensor(SensorEntity):
     def available(self) -> bool:
         main = self.hass.states.get("sensor.molad_yiddish")
         return bool(main and main.attributes.get("rosh_chodesh_nightfall"))
-    
