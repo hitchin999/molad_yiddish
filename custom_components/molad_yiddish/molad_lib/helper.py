@@ -166,7 +166,6 @@ def int_to_hebrew(num: int) -> str:
             result += letter
             num -= value
     # add gershayim for multi-letter, geresh for single
-    # use ASCII double-quote for multi-letter, ASCII apostrophe for single
     if len(result) > 1:
-        return f'{result[:-1]}"{result[-1]}'
-    return f"{result}'"
+        return f"{result[:-1]}\u05F4{result[-1]}"
+    return f"{result}\u05F3"
