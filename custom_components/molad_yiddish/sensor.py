@@ -372,11 +372,11 @@ class RoshChodeshTodaySensor(SensorEntity):
         async_track_state_change_event(
             self.hass,
             "sensor.molad_yiddish",
-        # callback signature: event, entity_id, old_state, new_state
-        lambda _event, _entity, _old, _new: self.hass.async_create_task(self.async_update()),
+            # callback only gets the Event object
+            lambda event: self.async_schedule_update_ha_state(),
         )
         
-         # 5) schedule a run at today's sunset + havdalah_offset
+        # 5) schedule a run at today's sunset + havdalah_offset
         async_track_sunset(
             self.hass,
             lambda now: self.hass.async_create_task(self.async_update()),
