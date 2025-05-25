@@ -5,16 +5,13 @@ from datetime import date, timedelta
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.event import (
-    async_track_time_interval,
-    async_track_state_change_event,
-    async_track_sunset,
-)
+from homeassistant.helpers.event import async_track_time_interval, async_track_sunset
 
 from pyluach.hebrewcal import Year, HebrewDate as PHebrewDate
 from .molad_lib.helper import int_to_hebrew
 
 _LOGGER = logging.getLogger(__name__)
+
 
 def get_hebrew_month_name(month: int, year: int) -> str:
     """
@@ -33,7 +30,7 @@ def get_hebrew_month_name(month: int, year: int) -> str:
     return {
         1:  "ניסן",
         2:  "אייר",
-        3:  "סיון",
+        3:  "סיוון",
         4:  "תמוז",
         5:  "אב",
         6:  "אלול",
@@ -81,22 +78,23 @@ class YiddishDateSensor(SensorEntity):
     def state(self) -> str:
         return self._state or ""
 
-async def _update_state(self) -> None:
-    today = date.today()
-    heb = PHebrewDate.from_pydate(today)
+    async def _update_state(self) -> None:
+        today = date.today()
+        heb = PHebrewDate.from_pydate(today)
 
-    # day → Hebrew numerals
-    day_heb = int_to_hebrew(heb.day)
-    # month → accurate name including Adar I/II
-    month_heb = get_hebrew_month_name(heb.month, heb.year)
-    # year → last three digits (e.g. 5785 → 785 → תשפ״ה)
-    year_num = heb.year % 1000
-    year_heb = int_to_hebrew(year_num)
+        # day → Hebrew numerals
+        day_heb = int_to_hebrew(heb.day)
+        # month → accurate name including Adar I/II
+        month_heb = get_hebrew_month_name(heb.month, heb.year)
+        # year → last three digits (e.g. 5785 → 785 → תשפ״ה)
+        year_num = heb.year % 1000
+        year_heb = int_to_hebrew(year_num)
 
-    # build raw state (with Hebrew gershayim/geresh)
-    state = f"{day_heb} {month_heb} {year_heb}"
-    # now swap in ASCII quotes just for this sensor
-    state = state.replace("\u05F4", '"').replace("\u05F3", "'")
+        # raw state with Hebrew geresh/gershayim
+        state = f"{day_heb} {month_heb} {year_heb}"
+        # convert only for this sensor to ASCII quotes
+        state = state.replace("\u05F4", '"').replace("\u05F3", "'")
 
-    self._state = state
-    self.async_write_ha_state()
+        self._state = state
+        self.async_write_ha_state()
+        
