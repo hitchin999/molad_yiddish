@@ -81,18 +81,22 @@ class YiddishDateSensor(SensorEntity):
     def state(self) -> str:
         return self._state or ""
 
-    async def _update_state(self) -> None:
-        today = date.today()
-        heb = PHebrewDate.from_pydate(today)
+async def _update_state(self) -> None:
+    today = date.today()
+    heb = PHebrewDate.from_pydate(today)
 
-        # day → Hebrew numerals
-        day_heb = int_to_hebrew(heb.day)
-        # month → accurate name including Adar I/II
-        month_heb = get_hebrew_month_name(heb.month, heb.year)
-        # year → last three digits (e.g. 5785 → 785 → תשפ״ה)
-        year_num = heb.year % 1000
-        year_heb = int_to_hebrew(year_num)
+    # day → Hebrew numerals
+    day_heb = int_to_hebrew(heb.day)
+    # month → accurate name including Adar I/II
+    month_heb = get_hebrew_month_name(heb.month, heb.year)
+    # year → last three digits (e.g. 5785 → 785 → תשפ״ה)
+    year_num = heb.year % 1000
+    year_heb = int_to_hebrew(year_num)
 
-        self._state = f"{day_heb} {month_heb} {year_heb}"
-        self.async_write_ha_state()
-        
+    # build raw state (with Hebrew gershayim/geresh)
+    state = f"{day_heb} {month_heb} {year_heb}"
+    # now swap in ASCII quotes just for this sensor
+    state = state.replace("\u05F4", '"').replace("\u05F3", "'")
+
+    self._state = state
+    self.async_write_ha_state()
