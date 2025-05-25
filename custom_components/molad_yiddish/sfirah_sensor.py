@@ -2,6 +2,7 @@
 
 import logging
 import unicodedata
+from datetime import timedelta
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.components.sensor import SensorEntity
@@ -22,14 +23,15 @@ def async_setup_entry(
     """
     Set up the Omer (Sefirah) sensors with optional nikud stripping and user-defined Havdalah offset.
     """
-    # Pull the Havdalah offset the user set in Options
-    opts = hass.data[DOMAIN].get(entry.entry_id, {})
+    # Pull options from entry (strip nikud, Havdalah offset)
+    opts = hass.data[DOMAIN].get(entry.entry_id, {}) or {}
+    strip_nikud = opts.get("strip_nikud", False)
     havdalah_offset = opts.get("havdalah_offset", 72)
-    # Pass that offset into the helper
+
+    # Initialize helper with offset
     helper = SfirahHelper(hass, havdalah_offset)
 
-
-
+    # Create sensor entities
     async_add_entities(
         [
             SefirahCounterYiddish(hass, helper, strip_nikud, havdalah_offset),
@@ -59,7 +61,7 @@ class BaseSefirahSensor(SensorEntity):
         self._state = None
         self._attr_name = name
         self._attr_unique_id = unique_id
-        self._unsub_sun = None
+        self._unsub_sunset = None
 
     @property
     def native_value(self):
@@ -69,34 +71,33 @@ class BaseSefirahSensor(SensorEntity):
         """Fetch new state from helper and apply nikud stripping."""
         text = self._get_text()
         if self._strip:
-            # Normalize compatibility characters (presentation forms)
             text = unicodedata.normalize('NFKC', text)
-            # Remove all combining marks (Nikud and other diacritics)
             text = ''.join(ch for ch in text if unicodedata.category(ch)[0] != 'M')
         self._state = text
 
     @callback
     def _schedule_after_sunset(self) -> None:
-        """Schedule an update after Havdalah offset minutes post-sunset."""
+        """Schedule an update havdalah_offset minutes after sunset."""
         async_call_later(
-            self.hass, self._havdalah_offset * 60, lambda _now: self.async_schedule_update_ha_state()
+            self.hass,
+            self._havdalah_offset * 60,
+            lambda _now: self.async_schedule_update_ha_state(),
         )
 
     async def async_added_to_hass(self) -> None:
         """Register for sunset event when added to Home Assistant."""
-        # Trigger initial update
+        # Trigger initial load
         self.async_schedule_update_ha_state()
 
         def _on_sunset(event):
             self._schedule_after_sunset()
 
-        # Listen for the 'sunset' event
-        self._unsub_sun = self.hass.bus.async_listen("sunset", _on_sunset)
+        self._unsub_sunset = self.hass.bus.async_listen("sunset", _on_sunset)
 
     async def async_will_remove_from_hass(self) -> None:
         """Cleanup the listener when removed from Home Assistant."""
-        if self._unsub_sun:
-            self._unsub_sun()
+        if self._unsub_sunset:
+            self._unsub_sunset()
 
 
 class SefirahCounterYiddish(BaseSefirahSensor):
