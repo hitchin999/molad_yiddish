@@ -1,11 +1,15 @@
-# homeassistant/custom_components/molad_yiddish/yiddish_date_sensor.py
+#homeassistant/custom_components/molad_yiddish/yiddish_date_sensor.py
 from __future__ import annotations
 import logging
 from datetime import date, timedelta
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.event import async_track_time_interval, async_track_sunset
+from homeassistant.helpers.event import (
+    async_track_time_interval,
+    async_track_state_change_event,
+    async_track_sunset,
+)
 
 from pyluach.hebrewcal import Year, HebrewDate as PHebrewDate
 from .molad_lib.helper import int_to_hebrew
@@ -91,3 +95,4 @@ class YiddishDateSensor(SensorEntity):
 
         self._state = f"{day_heb} {month_heb} {year_heb}"
         self.async_write_ha_state()
+        
