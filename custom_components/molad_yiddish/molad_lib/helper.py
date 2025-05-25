@@ -11,11 +11,16 @@ import logging
 
 import hdate
 import hdate.converters
-from hdate.hebrew_date import Months, HebrewDate, is_shabbat
+from hdate.hebrew_date import Months, HebrewDate
 from pyluach.hebrewcal import Month as PMonth
 
 _LOGGER = logging.getLogger(__name__)
 
+# vendored replacement for removed hdate.hebrew_date.is_shabbat
+def is_shabbat(gdate: datetime.date) -> bool:
+    """Return True if the given Gregorian date is Saturday (Shabbat)."""
+    return gdate.weekday() == 5
+    
 # Mapping from hdate.Months.name to pyluach month number (1=Nissan … 13=Adar II)
 _HD2PY = {
     "NISSAN":   1, "IYYAR":    2, "SIVAN":    3,
