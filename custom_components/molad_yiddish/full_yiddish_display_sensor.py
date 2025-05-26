@@ -70,14 +70,17 @@ class FullYiddishDisplaySensor(SensorEntity):
 
         # Build state so there's *no* separator between day_label & parsha,
         # but *yes* between parsha and anything that follows.
+        # Build state so there's one space between day_label & parsha,
+        # but " · " before anything that follows.
         if len(parts) >= 2:
-            # Join everything after the second element with separators...
+            # everything after Parsha goes into suffix
             suffix = parts[2:]
             if suffix:
-                self._state = f"{parts[0]}{parts[1]} · " + " · ".join(suffix)
+                # note the space between parts[0] and parts[1]
+                self._state = f"{parts[0]} {parts[1]} · " + " · ".join(suffix)
             else:
-                # Only day_label and parsha present
-                self._state = f"{parts[0]}{parts[1]}"
+                # only Day + Parsha
+                self._state = f"{parts[0]} {parts[1]}"
         else:
-            # Fallback for cases where there's only one or zero parts
+            # 0 or 1 part: fallback join
             self._state = " · ".join(parts)
