@@ -82,9 +82,9 @@ class HolidayAttributeBinarySensor(BinarySensorEntity):
 
         # Lookup your override map here
         slug = SLUG_OVERRIDES.get(attr_name)
-        if slug:
+        if not slug:
            # _LOGGER.debug("🔖 Using slug %r for attr %r", slug, attr_name)
-        else:
+       # else:
           #  _LOGGER.warning("❌ No SLUG_OVERRIDES entry for %r; falling back", attr_name)
             slug = (
                 attr_name
