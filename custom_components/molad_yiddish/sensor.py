@@ -33,6 +33,7 @@ from .perek_avot_sensor import PerekAvotSensor
 from .holiday_sensor import HolidaySensor
 from .no_music_sensor import NoMusicSensor
 from .holiday_binary_sensors import MeluchaProhibitionSensor, ErevHolidaySensor
+from .full_yiddish_display_sensor import FullYiddishDisplaySensor
 
 
 from .const import DOMAIN
@@ -96,6 +97,7 @@ async def async_setup_entry(
         NoMusicSensor(hass),
         MeluchaProhibitionSensor(hass, candle_offset, havdalah_offset),
         ErevHolidaySensor(hass, candle_offset),
+        FullYiddishDisplaySensor(hass),
     ], update_before_add=True)
 
 
