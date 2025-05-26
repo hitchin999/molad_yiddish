@@ -68,5 +68,16 @@ class FullYiddishDisplaySensor(SensorEntity):
             if (wd == 4 and hr >= 13) or wd == 5:
                 parts.append(special_shabbos.state)
 
-        # Join parts with separator
-        self._state = " · ".join(parts)
+        # Build state so there's *no* separator between day_label & parsha,
+        # but *yes* between parsha and anything that follows.
+        if len(parts) >= 2:
+            # Join everything after the second element with separators...
+            suffix = parts[2:]
+            if suffix:
+                self._state = f"{parts[0]}{parts[1]} · " + " · ".join(suffix)
+            else:
+                # Only day_label and parsha present
+                self._state = f"{parts[0]}{parts[1]}"
+        else:
+            # Fallback for cases where there's only one or zero parts
+            self._state = " · ".join(parts)
