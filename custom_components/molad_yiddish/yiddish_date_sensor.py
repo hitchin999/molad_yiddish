@@ -5,7 +5,10 @@ from datetime import date, timedelta
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.event import async_track_time_interval, async_track_sunset
+from homeassistant.helpers.event import (
+    async_track_time_change,
+    async_track_sunset,
+)
 
 from pyluach.hebrewcal import Year, HebrewDate as PHebrewDate
 from .molad_lib.helper import int_to_hebrew
@@ -60,11 +63,11 @@ class YiddishDateSensor(SensorEntity):
         # 1) initial fill
         await self._update_state()
 
-        # 2) update just after local midnight
-        async_track_time_interval(
+        # 2) update right at local midnight
+        async_track_time_change(
             self.hass,
             lambda now: self.hass.async_create_task(self._update_state()),
-            timedelta(days=1, seconds=5),
+            hour=0, minute=0, second=5,
         )
 
         # 3) update at sunset + havdalah_offset
