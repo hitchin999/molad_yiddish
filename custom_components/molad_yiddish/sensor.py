@@ -30,6 +30,9 @@ from .special_shabbos_sensor import SpecialShabbosSensor
 from .parsha_sensor import ParshaYiddishSensor
 from .yiddish_date_sensor import YiddishDateSensor
 from .perek_avot_sensor import PerekAvotSensor
+from .holiday_sensor import HolidaySensor
+from .no_music_sensor import NoMusicSensor
+from .holiday_binary_sensors import MeluchaProhibitionSensor, ErevHolidaySensor
 
 
 from .const import DOMAIN
@@ -89,6 +92,10 @@ async def async_setup_entry(
         ParshaYiddishSensor(hass),
         YiddishDateSensor(hass, havdalah_offset),
         PerekAvotSensor(hass),
+        HolidaySensor(hass, candle_offset, havdalah_offset),
+        NoMusicSensor(hass),
+        MeluchaProhibitionSensor(hass, candle_offset, havdalah_offset),
+        ErevHolidaySensor(hass, candle_offset),
     ], update_before_add=True)
 
 
@@ -195,10 +202,11 @@ class MoladYiddishSensor(SensorEntity):
 
 
 class YiddishDayLabelSensor(SensorEntity):
-    """Sensor for standalone Yiddish day label."""
+    """Sensor for standalone Yiddish day label, with Erev/Motzei Yom Tov."""
 
     _attr_name = "Yiddish Day Label"
     _attr_unique_id = "yiddish_day_label"
+    _attr_icon = "mdi:star-four-points"
 
     def __init__(
         self,
@@ -210,14 +218,21 @@ class YiddishDayLabelSensor(SensorEntity):
         self.hass = hass
         self._candle = candle_offset
         self._havdalah = havdalah_offset
-        self._state: str | None = None
-        async_track_time_interval(hass, self.async_update, timedelta(hours=1))
+        # update every hour
+        async_track_time_interval(self.hass, self.async_update, timedelta(hours=1))
 
     @property
     def native_value(self) -> str | None:
         return self._state
 
     async def async_update(self, now=None) -> None:
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        from astral import LocationInfo
+        from astral.sun import sun
+        import pyluach.dates as pdates
+        from pyluach.hebrewcal import HebrewDate as PHebrewDate
+
         tz = ZoneInfo(self.hass.config.time_zone)
         loc = LocationInfo(
             latitude=self.hass.config.latitude,
@@ -229,36 +244,52 @@ class YiddishDayLabelSensor(SensorEntity):
         candle = s["sunset"] - timedelta(minutes=self._candle)
         havdalah = s["sunset"] + timedelta(minutes=self._havdalah)
 
-        # Hebrew date
+        # Today's Hebrew date (advances after sunset to next day)
         g = pdates.GregorianDate(current.year, current.month, current.day)
         hdate = g.to_heb()
         if current >= s["sunset"]:
             hdate = PHebrewDate(hdate.year, hdate.month, hdate.day) + 1
 
-        # Holiday
-        is_tov = bool(hdate.festival(israel=False, include_working_days=False))
+        # Tomorrow's Hebrew date
+        tom = current.date() + timedelta(days=1)
+        tom_h = pdates.GregorianDate(tom.year, tom.month, tom.day).to_heb()
 
-        # Shabbos
-        wd = current.weekday()
-        is_shab = (wd == 4 and current >= candle) or (wd == 5 and current < havdalah)
+        wd = current.weekday()  # Mon=0 … Sun=6
 
+        # Flags
+        is_erev_shab = (wd == 4 and current >= candle)
+        is_shab      = (wd == 4 and current >= candle) or (wd == 5 and current < havdalah)
+        is_motzei_shab = (wd == 5 and current >= havdalah)
+
+        is_tov       = bool(hdate.festival(israel=False, include_working_days=False))
+        is_erev_tov  = bool(tom_h.festival(israel=False, include_working_days=False)) and current >= candle and current < s["sunset"]
+        is_motzei_tov = is_tov and current >= havdalah
+
+        labels: list[str] = []
+        if is_erev_shab:
+            labels.append('ערש"ק')
+        if is_erev_tov:
+            labels.append('עריו"ט')
         if is_shab:
-            lbl = "שבת קודש"
-        elif is_tov:
-            lbl = "יום טוב"
-        elif wd == 4 and current.hour >= 12:
-            lbl = 'ערש\"ק'
-        elif wd == 5 and current >= havdalah:
-            lbl = 'מוצש\"ק'
-        else:
+            labels.append("שבת קודש")
+        if is_tov:
+            labels.append("יום טוב")
+        if is_motzei_shab:
+            labels.append('מוצש"ק')
+        if is_motzei_tov:
+            labels.append('מוציו"ט')
+
+        if not labels:
             days = ["זונטאג","מאנטאג","דינסטאג","מיטוואך","דאנערשטאג","פרייטאג","שבת"]
             idx = {6:0,0:1,1:2,2:3,3:4,4:5,5:6}[wd]
-            lbl = days[idx]
+            labels = [days[idx]]
 
-        self._state = lbl
+        # join with Hebrew "ו"
+        self._state = " ו".join(labels)
 
     def update(self) -> None:
         self.hass.async_create_task(self.async_update())
+
 
 
 class ShabbosMevorchimSensor(BinarySensorEntity):
@@ -367,7 +398,7 @@ class RoshChodeshTodaySensor(SensorEntity):
             lambda now: self.hass.async_create_task(self.async_update()),
             timedelta(hours=1),
         )
-
+        
         # 4) reschedule whenever the molad sensor itself changes
         async_track_state_change_event(
             self.hass,
@@ -375,8 +406,9 @@ class RoshChodeshTodaySensor(SensorEntity):
             # callback only gets the Event object
             lambda event: self.async_schedule_update_ha_state(),
         )
+
         
-        # 5) schedule a run at today's sunset + havdalah_offset
+         # 5) schedule a run at today's sunset + havdalah_offset
         async_track_sunset(
             self.hass,
             lambda now: self.hass.async_create_task(self.async_update()),
