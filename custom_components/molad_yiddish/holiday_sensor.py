@@ -115,7 +115,7 @@ class HolidaySensor(SensorEntity):
                 "ראש חודש",
                 "תענית מתחילה עכשיו"
             ]},
-            "fast_ends_in": None,
+            "מען פאַסט אויס און": None,
         }
 
         # 3) Leap-year and Shovavim
@@ -323,7 +323,7 @@ class HolidaySensor(SensorEntity):
 
         # Fast countdown
         if is_fast and end_time:
-            attrs["fast_ends_in"] = max(0, int((end_time - now).total_seconds()))
+            attrs["מען פאַסט אויס און"] = max(0, int((end_time - now).total_seconds()))
 
         # Set state and attributes
         self._attr_native_value = hol_name or ""
