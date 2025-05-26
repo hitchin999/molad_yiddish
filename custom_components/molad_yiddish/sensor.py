@@ -32,7 +32,6 @@ from .yiddish_date_sensor import YiddishDateSensor
 from .perek_avot_sensor import PerekAvotSensor
 from .holiday_sensor import HolidaySensor
 from .no_music_sensor import NoMusicSensor
-from .holiday_binary_sensors import MeluchaProhibitionSensor, ErevHolidaySensor
 from .full_yiddish_display_sensor import FullYiddishDisplaySensor
 
 
@@ -63,6 +62,8 @@ TIME_OF_DAY = {
     "am": lambda h: "פארטאגס" if h < 6 else "צופרי",
     "pm": lambda h: "נאכמיטאג" if h < 18 else "ביינאכט",
 }
+
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -95,8 +96,6 @@ async def async_setup_entry(
         PerekAvotSensor(hass),
         HolidaySensor(hass, candle_offset, havdalah_offset),
         NoMusicSensor(hass),
-        MeluchaProhibitionSensor(hass, candle_offset, havdalah_offset),
-        ErevHolidaySensor(hass, candle_offset),
         FullYiddishDisplaySensor(hass),
     ], update_before_add=True)
 
