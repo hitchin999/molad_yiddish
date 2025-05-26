@@ -1,5 +1,3 @@
-# /config/custom_components/molad_yiddish/sfirah_sensor.py
-
 import logging
 import unicodedata
 from datetime import timedelta
@@ -61,11 +59,17 @@ class BaseSefirahSensor(SensorEntity):
         self._state = None
         self._attr_name = name
         self._attr_unique_id = unique_id
+        self._attr_icon = "mdi:counter"  # use the counter icon
         self._unsub_sunset = None
 
     @property
     def native_value(self):
         return self._state
+        
+    @property
+    def icon(self) -> str:
+        """Return the icon for this sensor."""
+        return self._attr_icon
 
     async def async_update(self) -> None:
         """Fetch new state from helper and apply nikud stripping."""
