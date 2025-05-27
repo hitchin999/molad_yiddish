@@ -1,3 +1,4 @@
+#custom_components/molad_yiddish/special_shabbos_sensor.py
 from homeassistant.components.sensor import SensorEntity
 from .molad_lib import specials
 
