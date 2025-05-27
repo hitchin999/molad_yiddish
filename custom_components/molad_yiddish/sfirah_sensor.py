@@ -1,16 +1,16 @@
+import logging
 import unicodedata
 from datetime import timedelta
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.event import (
-    async_call_later,
-    async_track_time_change,
-)
+from homeassistant.helpers.event import async_call_later
 
 from .molad_lib.sfirah_helper import SfirahHelper
 from .const import DOMAIN
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def async_setup_entry(
@@ -18,12 +18,18 @@ def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
+    """
+    Set up the Omer (Sefirah) sensors with optional nikud stripping and user-defined Havdalah offset.
+    """
+    # Pull options from entry (strip nikud, Havdalah offset)
     opts = hass.data[DOMAIN].get(entry.entry_id, {}) or {}
     strip_nikud = opts.get("strip_nikud", False)
     havdalah_offset = opts.get("havdalah_offset", 72)
 
+    # Initialize helper with offset
     helper = SfirahHelper(hass, havdalah_offset)
 
+    # Create sensor entities
     async_add_entities(
         [
             SefirahCounterYiddish(hass, helper, strip_nikud, havdalah_offset),
@@ -34,6 +40,8 @@ def async_setup_entry(
 
 
 class BaseSefirahSensor(SensorEntity):
+    """Base class for Sefirah (Omer) sensors."""
+
     def __init__(
         self,
         hass: HomeAssistant,
@@ -51,27 +59,29 @@ class BaseSefirahSensor(SensorEntity):
         self._state = None
         self._attr_name = name
         self._attr_unique_id = unique_id
-        self._attr_icon = "mdi:counter"
+        self._attr_icon = "mdi:counter"  # use the counter icon
         self._unsub_sunset = None
 
     @property
     def native_value(self):
         return self._state
-
+        
     @property
     def icon(self) -> str:
+        """Return the icon for this sensor."""
         return self._attr_icon
 
     async def async_update(self) -> None:
+        """Fetch new state from helper and apply nikud stripping."""
         text = self._get_text()
         if self._strip:
             text = unicodedata.normalize('NFKC', text)
             text = ''.join(ch for ch in text if unicodedata.category(ch)[0] != 'M')
         self._state = text
-        self.async_write_ha_state()
 
     @callback
     def _schedule_after_sunset(self) -> None:
+        """Schedule an update havdalah_offset minutes after sunset."""
         async_call_later(
             self.hass,
             self._havdalah_offset * 60,
@@ -79,6 +89,8 @@ class BaseSefirahSensor(SensorEntity):
         )
 
     async def async_added_to_hass(self) -> None:
+        """Register for sunset event when added to Home Assistant."""
+        # Trigger initial load
         self.async_schedule_update_ha_state()
 
         def _on_sunset(event):
@@ -86,20 +98,15 @@ class BaseSefirahSensor(SensorEntity):
 
         self._unsub_sunset = self.hass.bus.async_listen("sunset", _on_sunset)
 
-        async_track_time_change(
-            self.hass,
-            lambda now: self.hass.async_create_task(self.async_update()),
-            hour=0,
-            minute=5,
-            second=0,
-        )
-
     async def async_will_remove_from_hass(self) -> None:
+        """Cleanup the listener when removed from Home Assistant."""
         if self._unsub_sunset:
             self._unsub_sunset()
 
 
 class SefirahCounterYiddish(BaseSefirahSensor):
+    """Sensor for the Sefirah count in Yiddish text."""
+
     def __init__(
         self,
         hass: HomeAssistant,
@@ -121,6 +128,8 @@ class SefirahCounterYiddish(BaseSefirahSensor):
 
 
 class SefirahCounterMiddosYiddish(BaseSefirahSensor):
+    """Sensor for the Sefirah middos count in Yiddish text."""
+
     def __init__(
         self,
         hass: HomeAssistant,
