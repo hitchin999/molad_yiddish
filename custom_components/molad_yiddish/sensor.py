@@ -219,8 +219,27 @@ class YiddishDayLabelSensor(SensorEntity):
         self.hass = hass
         self._candle = candle_offset
         self._havdalah = havdalah_offset
-        # update every hour
+
+    async def async_added_to_hass(self) -> None:
+        await self.async_update()
+
+        # Hourly fallback
         async_track_time_interval(self.hass, self.async_update, timedelta(hours=1))
+
+        # Midnight update
+        async_track_time_change(
+            self.hass,
+            lambda now: self.hass.async_create_task(self.async_update()),
+            hour=0,
+            minute=0,
+            second=5,
+        )
+
+        # Sunset trigger
+        async_track_sunset(
+            self.hass,
+            lambda now: self.hass.async_create_task(self.async_update()),
+        )
 
     @property
     def native_value(self) -> str | None:
