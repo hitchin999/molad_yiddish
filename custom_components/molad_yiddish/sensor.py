@@ -95,7 +95,7 @@ async def async_setup_entry(
         YiddishDateSensor(hass, havdalah_offset),
         PerekAvotSensor(hass),
         HolidaySensor(hass, candle_offset, havdalah_offset),
-        NoMusicSensor(hass),
+        NoMusicSensor(hass, candle_offset, havdalah_offset),
         FullYiddishDisplaySensor(hass),
     ], update_before_add=True)
 
