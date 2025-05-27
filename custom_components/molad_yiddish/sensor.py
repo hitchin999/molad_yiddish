@@ -277,14 +277,14 @@ class YiddishDayLabelSensor(SensorEntity):
 
         wd = current.weekday()  # Mon=0 … Sun=6
 
-        # Flags
-        is_erev_shab = (wd == 4 and current >= candle)
-        is_shab      = (wd == 4 and current >= candle) or (wd == 5 and current < havdalah)
+        # Friday evening only _between_ candle and actual sunset
+        is_erev_shab   = (wd == 4 and candle <= current < s["sunset"])
+    
+        # Saturday only from sunset _until_ havdalah
+        is_shab        = (wd == 5 and s["sunset"] <= current < havdalah)
+    
+        # Motzei Shabbos from havdalah onward on Saturday
         is_motzei_shab = (wd == 5 and current >= havdalah)
-
-        is_tov       = bool(hdate.festival(israel=False, include_working_days=False))
-        is_erev_tov  = bool(tom_h.festival(israel=False, include_working_days=False)) and current >= candle and current < s["sunset"]
-        is_motzei_tov = is_tov and current >= havdalah
 
         labels: list[str] = []
         if is_erev_shab:
