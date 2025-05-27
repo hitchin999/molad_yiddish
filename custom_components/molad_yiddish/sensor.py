@@ -407,29 +407,26 @@ class RoshChodeshTodaySensor(SensorEntity):
         self._attr_native_value = None
 
     async def async_added_to_hass(self) -> None:
-        # 1) ensure base is set up (entity_id exists)
         await super().async_added_to_hass()
 
-        # 2) initial population
+        # Initial population
         await self.async_update()
 
-        # 3) schedule hourly updates
+        # Hourly updates
         async_track_time_interval(
             self.hass,
             lambda now: self.hass.async_create_task(self.async_update()),
             timedelta(hours=1),
         )
-        
-        # 4) reschedule whenever the molad sensor itself changes
+
+        # When molad sensor changes
         async_track_state_change_event(
             self.hass,
             "sensor.molad_yiddish",
-            # callback only gets the Event object
             lambda event: self.async_schedule_update_ha_state(),
         )
 
-        
-         # 5) schedule a run at today's sunset + havdalah_offset
+        # At sunset + havdalah
         async_track_sunset(
             self.hass,
             lambda now: self.hass.async_create_task(self.async_update()),
@@ -437,27 +434,33 @@ class RoshChodeshTodaySensor(SensorEntity):
         )
 
     async def async_update(self, now=None) -> None:
-        # Get the main molad sensor attributes
+        from zoneinfo import ZoneInfo
+        tz = ZoneInfo(self.hass.config.time_zone)
+        now = now or datetime.now(tz)
+
         main = self.hass.states.get("sensor.molad_yiddish")
         attr = main.attributes if main else {}
         nf_list = attr.get("rosh_chodesh_nightfall") or []
         month = attr.get("month_name", "")
-        today = date.today()
 
-        dates: list[date] = []
+        nf_datetimes: list[datetime] = []
         for item in nf_list:
             if isinstance(item, datetime):
-                dates.append(item.date())
+                nf_datetimes.append(item)
             else:
-                dates.append(datetime.fromisoformat(item).date())
+                nf_datetimes.append(datetime.fromisoformat(item))
 
-        if today in dates:
-            idx = dates.index(today)
-            if len(dates) == 1:
-              val = f"ראש חודש {month}"
+        active_index = None
+        for i, dt in enumerate(nf_datetimes):
+            if now >= dt:
+                active_index = i
+
+        if active_index is not None:
+            if len(nf_datetimes) == 1:
+                val = f"ראש חודש {month}"
             else:
-              prefix = ["א", "ב"][idx] + "׳"
-              val = f"{prefix} ד׳ראש חודש {month}"
+                prefix = ["א", "ב"][active_index] + "׳"
+                val = f"{prefix} ד׳ראש חודש {month}"
         else:
             val = "Not Rosh Chodesh Today"
 
