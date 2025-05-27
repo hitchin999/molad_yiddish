@@ -200,6 +200,7 @@ class MeluchaProhibitionSensor(BinarySensorEntity):
         # is it Shabbos eve or full Yom-Tov eve?
         is_yom_tov = heb.holiday_name in FULL_YOM_TOV
         # Shabbos eve = Friday between candle and sunset# check if any of those names match your FULL_YOM_TOV set
+        names = [h.name for h in hd.holidays]        
         is_yom_tov = any(name in FULL_YOM_TOV for name in names)
         self._attr_is_on = is_yom_tov
         is_shabbos = (
