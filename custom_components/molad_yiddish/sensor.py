@@ -254,6 +254,7 @@ class YiddishDayLabelSensor(SensorEntity):
         import pyluach.dates as pdates
         from pyluach.hebrewcal import HebrewDate as PHebrewDate
 
+
         tz = ZoneInfo(self.hass.config.time_zone)
         loc = LocationInfo(
             latitude=self.hass.config.latitude,
@@ -261,6 +262,7 @@ class YiddishDayLabelSensor(SensorEntity):
             timezone=self.hass.config.time_zone,
         )
         current = datetime.now(tz)
+        wd = current.weekday()
         s = sun(loc.observer, date=current.date(), tzinfo=tz)
         candle = s["sunset"] - timedelta(minutes=self._candle)
         havdalah = s["sunset"] + timedelta(minutes=self._havdalah)
