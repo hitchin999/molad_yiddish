@@ -3,25 +3,26 @@
 from __future__ import annotations
 import logging
 import datetime
-from datetime import timedelta, date
+from datetime import timedelta
 from zoneinfo import ZoneInfo
 
 from astral import LocationInfo
 from astral.sun import sun
 from hdate import HDateInfo
-from pyluach.hebrewcal import HebrewDate as PHebrewDate
 
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.event import (
+    async_track_time_interval,
+    async_track_time_change,
+    async_track_sunset,
+)
 from homeassistant.components.binary_sensor import BinarySensorEntity
-from homeassistant.helpers.event import async_track_sunset
-from homeassistant.core import callback
 
-
-from .const import DOMAIN
+from .const import DOMAIN, FULL_YOM_TOV
 
 _LOGGER = logging.getLogger(__name__)
+
 
 # ─── Your override map ────────────────────────────────────────────────────────
 SLUG_OVERRIDES: dict[str, str] = {
@@ -150,48 +151,64 @@ class MeluchaProhibitionSensor(BinarySensorEntity):
         self._havdalah = havdalah_offset
         self._attr_is_on = False
 
-        # cache these (in case you use them elsewhere)
+        # cache for speed
+        self._tz = ZoneInfo(hass.config.time_zone)
         self._loc = LocationInfo(
             latitude=hass.config.latitude,
             longitude=hass.config.longitude,
             timezone=hass.config.time_zone,
         )
-        self._tz = ZoneInfo(hass.config.time_zone)
 
-        # Candle-lighting on Fri & on Yom Tov eve → turn on
-        async_track_sunset(
+    async def async_added_to_hass(self) -> None:
+        """Set up all the listeners, then do an initial update."""
+        # 1) initial update
+        await self.async_update()
+
+        # 2) hourly fallback
+        async_track_time_interval(
             self.hass,
-            self._turn_on_if_needed,
-            offset=-datetime.timedelta(minutes=self._candle),
+            lambda now: self.hass.async_create_task(self.async_update()),
+            timedelta(hours=1),
         )
 
-        # Havdalah on Sat & on Yom Tov end → turn off
-        async_track_sunset(
+        # 3) midnight reset (clear at start of day)
+        async_track_time_change(
             self.hass,
-            self._turn_off_if_needed,
-            offset=datetime.timedelta(minutes=self._havdalah),
+            lambda now: self.hass.async_create_task(self.async_update()),
+            hour=0, minute=0, second=5,
         )
 
-
-
+        # 4) exact sunset edge
+        async_track_sunset(
+            self.hass,
+            lambda now: self.hass.async_create_task(self.async_update()),
+        )
 
     @callback
-    def _turn_on_if_needed(self, now: datetime.datetime) -> None:
+    async def async_update(self, now: datetime.datetime | None = None) -> None:
+        """Recompute is_on based on candle, havdalah, weekday & full Yom-Tov."""
+        now = now or datetime.datetime.now(self._tz)
         today = now.date()
         heb = HDateInfo(today, diaspora=False)
 
-        # Friday (4) → Shabbos eve
-        if today.weekday() == 4:
-            self._attr_is_on = True
-        # Or if it’s one of our FULL_YOM_TOV days
-        elif heb.holiday_name in FULL_YOM_TOV:
-            self._attr_is_on = True
+        # get today's sunset
+        s = sun(self._loc.observer, date=today, tzinfo=self._tz)
+        candle_time = s["sunset"] - timedelta(minutes=self._candle)
+        havdalah_time = s["sunset"] + timedelta(minutes=self._havdalah)
 
-        self.async_write_ha_state()
+        # is it Shabbos eve or full Yom-Tov eve?
+        is_yom_tov = heb.holiday_name in FULL_YOM_TOV
+        # Shabbos eve = Friday between candle and sunset
+        is_shabbos = (
+            today.weekday() == 4 and
+            candle_time <= now < s["sunset"]
+        )
 
-    @callback
-    def _turn_off_if_needed(self, now: datetime.datetime) -> None:
-        self._attr_is_on = False
+        # set state
+        self._attr_is_on = (
+            (is_shabbos or is_yom_tov) and
+            (candle_time <= now < havdalah_time)
+        )
         self.async_write_ha_state()
 
 
