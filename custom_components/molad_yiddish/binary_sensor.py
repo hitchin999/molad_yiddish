@@ -19,7 +19,7 @@ from homeassistant.helpers.event import (
 )
 from homeassistant.components.binary_sensor import BinarySensorEntity
 
-from .const import DOMAIN, FULL_YOM_TOV
+from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
