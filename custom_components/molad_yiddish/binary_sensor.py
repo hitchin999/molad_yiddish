@@ -190,22 +190,23 @@ class MeluchaProhibitionSensor(BinarySensorEntity):
         """Recompute is_on based on candle, havdalah, weekday & full Yom-Tov."""
         now = now or datetime.datetime.now(self._tz)
         today = now.date()
-        heb = HDateInfo(today, diaspora=False)
+
+        # 1) Build the HDateInfo object for today's holidays
+        hd = HDateInfo(today, diaspora=False)
         names = [h.name for h in hd.holidays]
-        # get today's sunset
+
+        # 2) Compute today's sunset/candle/havdalah times
         s = sun(self._loc.observer, date=today, tzinfo=self._tz)
         candle_time = s["sunset"] - timedelta(minutes=self._candle)
         havdalah_time = s["sunset"] + timedelta(minutes=self._havdalah)
 
-        # is it Shabbos eve or full Yom-Tov eve?
-        is_yom_tov = heb.holiday_name in FULL_YOM_TOV
-        # Shabbos eve = Friday between candle and sunset# check if any of those names match your FULL_YOM_TOV set
-        names = [h.name for h in hd.holidays]        
+        # 3) Determine if today is a full Yom-Tov eve
         is_yom_tov = any(name in FULL_YOM_TOV for name in names)
-        self._attr_is_on = is_yom_tov
+
+        # 4) Determine if it's Shabbos eve (Friday between candle and sunset)
         is_shabbos = (
-            today.weekday() == 4 and
-            candle_time <= now < s["sunset"]
+            today.weekday() == 4
+            and candle_time <= now < s["sunset"]
         )
 
         # set state
