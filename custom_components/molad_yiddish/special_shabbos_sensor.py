@@ -1,31 +1,50 @@
+from datetime import timedelta
 from homeassistant.components.sensor import SensorEntity
-from .molad_lib import specials
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.event import (
+    async_track_time_change,
+    async_track_time_interval,
+)
 
-async def async_setup_platform(hass, config, add_entities, discovery_info=None):
-    """Set up the Special Shabbos Yiddish sensor."""
-    add_entities([SpecialShabbosSensor()], update_before_add=True)
+from .molad_lib import specials
 
 class SpecialShabbosSensor(SensorEntity):
     """Sensor that provides the upcoming special Shabbatot (Yiddish integration)."""
 
-    _attr_icon = "mdi:calendar-star"  # icon for a special event
+    _attr_name = "Special Shabbos Yiddish"
+    _attr_unique_id = "molad_yiddish_special_shabbos"
+    _attr_icon = "mdi:calendar-star"
     _attr_has_entity_name = True
 
     def __init__(self):
-        self._attr_name = "Special Shabbos Yiddish"
-        self._attr_unique_id = "molad_yiddish_special_shabbos"
-        self._state = None
+        self._state = ""
 
     @property
     def state(self):
-        """Return the state of the sensor (Hebrew string of special Shabbatot)."""
         return self._state
 
-    def update(self):
-        """Update the sensor state by computing the upcoming Shabbat specials."""
+    async def async_added_to_hass(self):
+        await self.async_update()
+
+        # Update daily just after midnight
+        async_track_time_change(
+            self.hass,
+            lambda now: self.hass.async_create_task(self.async_update()),
+            hour=0,
+            minute=0,
+            second=5,
+        )
+
+        # Backup: every 6 hours
+        async_track_time_interval(
+            self.hass,
+            lambda now: self.hass.async_create_task(self.async_update()),
+            timedelta(hours=6),
+        )
+
+    async def async_update(self):
         try:
-            # Call the rule engine to get the special Shabbat name (or empty string)
             self._state = specials.get_special_shabbos_name()
-        except Exception as e:
-            # In case of any calculation errors, set state to empty
+        except Exception:
             self._state = ""
+        self.async_write_ha_state()
