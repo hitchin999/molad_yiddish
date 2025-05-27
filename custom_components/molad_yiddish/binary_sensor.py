@@ -5,11 +5,12 @@ import logging
 import datetime
 from datetime import timedelta
 from zoneinfo import ZoneInfo
+from hdate import HDateInfo
 
 from astral import LocationInfo
 from astral.sun import sun
 from hdate import HDateInfo
-
+from pyluach.hebrewcal import HebrewDate as PHebrewDate
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.event import (
@@ -190,7 +191,7 @@ class MeluchaProhibitionSensor(BinarySensorEntity):
         now = now or datetime.datetime.now(self._tz)
         today = now.date()
         heb = HDateInfo(today, diaspora=False)
-
+        names = [h.name for h in hd.holidays]
         # get today's sunset
         s = sun(self._loc.observer, date=today, tzinfo=self._tz)
         candle_time = s["sunset"] - timedelta(minutes=self._candle)
@@ -198,7 +199,9 @@ class MeluchaProhibitionSensor(BinarySensorEntity):
 
         # is it Shabbos eve or full Yom-Tov eve?
         is_yom_tov = heb.holiday_name in FULL_YOM_TOV
-        # Shabbos eve = Friday between candle and sunset
+        # Shabbos eve = Friday between candle and sunset# check if any of those names match your FULL_YOM_TOV set
+        is_yom_tov = any(name in FULL_YOM_TOV for name in names)
+        self._attr_is_on = is_yom_tov
         is_shabbos = (
             today.weekday() == 4 and
             candle_time <= now < s["sunset"]
