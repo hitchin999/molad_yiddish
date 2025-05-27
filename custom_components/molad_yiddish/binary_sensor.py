@@ -138,6 +138,7 @@ class MeluchaProhibitionSensor(BinarySensorEntity):
 
     _attr_name = "Molad Yiddish Melucha Prohibition"
     _attr_unique_id = "molad_yiddish_melucha"
+    _attr_entity_id = "binary_sensor.molad_yiddish_melucha"
     _attr_icon = "mdi:briefcase-variant-off"
 
     def __init__(
@@ -161,61 +162,53 @@ class MeluchaProhibitionSensor(BinarySensorEntity):
         )
 
     async def async_added_to_hass(self) -> None:
-        """Set up all the listeners, then do an initial update."""
-        # 1) initial update
+        """Set up listeners, then do an initial update."""
         await self.async_update()
 
-        # 2) hourly fallback
         async_track_time_interval(
             self.hass,
             lambda now: self.hass.async_create_task(self.async_update()),
             timedelta(hours=1),
         )
-
-        # 3) midnight reset (clear at start of day)
         async_track_time_change(
             self.hass,
             lambda now: self.hass.async_create_task(self.async_update()),
             hour=0, minute=0, second=5,
         )
-
-        # 4) exact sunset edge
         async_track_sunset(
             self.hass,
             lambda now: self.hass.async_create_task(self.async_update()),
         )
 
-    @callback
     async def async_update(self, now: datetime.datetime | None = None) -> None:
         """Recompute is_on based on candle, havdalah, weekday & full Yom-Tov."""
         now = now or datetime.datetime.now(self._tz)
         today = now.date()
 
-        # 1) Build the HDateInfo object for today's holidays
+        # 1) Today's holidays
         hd = HDateInfo(today, diaspora=False)
         names = [h.name for h in hd.holidays]
 
-        # 2) Compute today's sunset/candle/havdalah times
+        # 2) Sunset, candle & havdalah times
         s = sun(self._loc.observer, date=today, tzinfo=self._tz)
         candle_time = s["sunset"] - timedelta(minutes=self._candle)
         havdalah_time = s["sunset"] + timedelta(minutes=self._havdalah)
 
-        # 3) Determine if today is a full Yom-Tov eve
+        # 3) Full Yom-Tov eve?
         is_yom_tov = any(name in FULL_YOM_TOV for name in names)
 
-        # 4) Determine if it's Shabbos eve (Friday between candle and sunset)
+        # 4) Shabbos eve?
         is_shabbos = (
             today.weekday() == 4
             and candle_time <= now < s["sunset"]
         )
 
-        # set state
+        # 5) Final state between candle & havdalah
         self._attr_is_on = (
             (is_shabbos or is_yom_tov) and
             (candle_time <= now < havdalah_time)
         )
-        self.async_write_ha_state()
-
+        # ← no self.async_write_ha_state() here
 
 class ErevHolidaySensor(BinarySensorEntity):
     """True on specific Erev‐days from dawn until candle‐lighting."""
