@@ -13,6 +13,7 @@ class SpecialShabbosSensor(SensorEntity):
 
     _attr_name = "Special Shabbos Yiddish"
     _attr_unique_id = "molad_yiddish_special_shabbos"
+    _attr_entity_id = "sensor.molad_yiddish_special_shabbos"
     _attr_icon = "mdi:calendar-star"
     _attr_has_entity_name = True
 
