@@ -15,6 +15,7 @@ from homeassistant.helpers.event import (
     async_track_time_interval,
     async_track_state_change_event,
     async_track_sunset,
+    async_track_time_change,
 )
 
 from hdate.converters import gdate_to_jdn
