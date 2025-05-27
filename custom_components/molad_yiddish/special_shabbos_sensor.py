@@ -11,13 +11,12 @@ from .molad_lib import specials
 class SpecialShabbosSensor(SensorEntity):
     """Sensor that provides the upcoming special Shabbatot (Yiddish integration)."""
 
-    _attr_name = "Special Shabbos Yiddish"
+        _attr_name = "Special Shabbos Yiddish"
     _attr_unique_id = "molad_yiddish_special_shabbos"
-    _attr_entity_id = "sensor.molad_yiddish_special_shabbos"
     _attr_icon = "mdi:calendar-star"
-    _attr_has_entity_name = True
 
     def __init__(self):
+        self._attr_entity_id = "sensor.molad_yiddish_special_shabbos"
         self._state = ""
 
     @property
