@@ -15,6 +15,9 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.components.binary_sensor import BinarySensorEntity
+from homeassistant.helpers.event import async_track_sunset
+from homeassistant.core import callback
+
 
 from .const import DOMAIN
 
@@ -115,40 +118,81 @@ class HolidayAttributeBinarySensor(BinarySensorEntity):
 
 
 
-# ─── Two fixed “static” binary sensors ────────────────────────────────────────
+# ─── MeluchaProhibitionSensor (sunset-driven) ─────────────────────────────────
+
+# adjust this list to exactly match your HDateInfo.holiday_name values:
+FULL_YOM_TOV = {
+    "Rosh Hashanah I", "Rosh Hashanah II",
+    "Yom Kippur",
+    "Sukkot I", "Sukkot II",
+    "Shemini Atzeret", "Simchat Torah",
+    "Pesach I", "Pesach II",
+    "Shavuot I", "Shavuot II",
+    "Pesach VII", "Pesach VIII",
+}
+
 class MeluchaProhibitionSensor(BinarySensorEntity):
-    """True from candlelighting until havdalah on Shabbos & full Yom Tov."""
+    """True from candle-lighting until havdalah on Shabbos & full Yom Tov."""
 
     _attr_name = "Molad Yiddish Melucha Prohibition"
     _attr_unique_id = "molad_yiddish_melucha"
     _attr_icon = "mdi:briefcase-variant-off"
 
-
-    def __init__(self, hass: HomeAssistant, candle_offset: int, havdalah_offset: int) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        candle_offset: int,
+        havdalah_offset: int
+    ) -> None:
         super().__init__()
         self.hass = hass
         self._candle = candle_offset
         self._havdalah = havdalah_offset
         self._attr_is_on = False
-        async_track_time_interval(hass, self.async_update, timedelta(hours=1))
 
-    async def async_update(self, now=None) -> None:
-        tz = ZoneInfo(self.hass.config.time_zone)
-        now = now or datetime.datetime.now(tz)
+        # cache these (in case you use them elsewhere)
+        self._loc = LocationInfo(
+            latitude=hass.config.latitude,
+            longitude=hass.config.longitude,
+            timezone=hass.config.time_zone,
+        )
+        self._tz = ZoneInfo(hass.config.time_zone)
+
+        # Candle-lighting on Fri & on Yom Tov eve → turn on
+        async_track_sunset(
+            self.hass,
+            self._turn_on_if_needed,
+            offset=-datetime.timedelta(minutes=self._candle),
+        )
+
+        # Havdalah on Sat & on Yom Tov end → turn off
+        async_track_sunset(
+            self.hass,
+            self._turn_off_if_needed,
+            offset=datetime.timedelta(minutes=self._havdalah),
+        )
+
+
+
+
+    @callback
+    def _turn_on_if_needed(self, now: datetime.datetime) -> None:
         today = now.date()
         heb = HDateInfo(today, diaspora=False)
-        is_yom_tov = heb.is_yom_tov or heb.is_holiday
 
-        loc = LocationInfo(latitude=self.hass.config.latitude,
-                           longitude=self.hass.config.longitude,
-                           timezone=self.hass.config.time_zone)
-        s_today = sun(loc.observer, date=today, tzinfo=tz)
-        s_yest = sun(loc.observer, date=today - timedelta(days=1), tzinfo=tz)
-        start = s_today["sunset"] - timedelta(minutes=self._candle)
-        end = s_today["sunset"] + timedelta(minutes=self._havdalah)
-        is_shabbos = s_yest["sunset"] - timedelta(minutes=self._candle) <= now < end
+        # Friday (4) → Shabbos eve
+        if today.weekday() == 4:
+            self._attr_is_on = True
+        # Or if it’s one of our FULL_YOM_TOV days
+        elif heb.holiday_name in FULL_YOM_TOV:
+            self._attr_is_on = True
 
-        self._attr_is_on = (is_yom_tov or is_shabbos) and (start <= now < end)
+        self.async_write_ha_state()
+
+    @callback
+    def _turn_off_if_needed(self, now: datetime.datetime) -> None:
+        self._attr_is_on = False
+        self.async_write_ha_state()
 
 
 class ErevHolidaySensor(BinarySensorEntity):
