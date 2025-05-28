@@ -58,13 +58,29 @@ class HolidaySensor(SensorEntity):
         if self.hass is None:
             return
 
-        # 1) Now & today
-        tz = ZoneInfo(self.hass.config.time_zone)
-        now = now or datetime.datetime.now(tz)
+        # 1) Now & base today
+        tz   = ZoneInfo(self.hass.config.time_zone)
+        now  = now or datetime.datetime.now(tz)
         today = now.date()
 
-        # 2) Hebrew date info
-        heb_info = HDateInfo(today, diaspora=False)
+        # ─── Option B: bump Hebrew "date" at sunset − candle_offset ────────────────
+        loc    = LocationInfo(
+            name="home",
+            region="",
+            timezone=self.hass.config.time_zone,
+            latitude=self.hass.config.latitude,
+            longitude=self.hass.config.longitude,
+        )
+        s        = sun(loc.observer, date=today, tzinfo=tz)
+        sunset   = s["sunset"]
+
+        # If we're past candle-lighting, roll into the next Hebrew day
+        if now >= sunset - timedelta(minutes=self._candle_offset):
+            today = today + timedelta(days=1)
+        # ────────────────────────────────────────────────────────────────────────────
+
+        # 2) Hebrew date info on the (possibly bumped) date
+        heb_info = HDateInfo(today, diaspora=True)
         hd_py    = PHebrewDate.from_pydate(today)
         
         # Initialize attributes: festivals, fasts, and custom periods
@@ -78,7 +94,7 @@ class HolidaySensor(SensorEntity):
                 "צום גדליה",
                 "שלוש עשרה מדות",
                 "ערב יום כיפור",
-                "יום הכפורים",
+                "יום הכיפורים",
                 "ערב סוכות",
                 "סוכות א׳",
                 "סוכות ב׳",
@@ -128,10 +144,10 @@ class HolidaySensor(SensorEntity):
         attrs["שובבים"]      = parsha in shov_base
         attrs["שובבים ת\"ת"] = is_leap and (parsha in shov_ext)
 
-        # 4) Determine holiday/fast
-        hol_name = hd_py.holiday(hebrew=True, prefix_day=True)
+        # 4) Determine holiday/fast using original logic
+        hol_name   = hd_py.holiday(hebrew=True, prefix_day=True)
         is_holiday = bool(hol_name and (heb_info.is_holiday or heb_info.is_yom_tov))
-        is_fast = hol_name in [
+        is_fast    = hol_name in [
             "יום הכיפורים",
             "צום גדליה",
             "תענית אסתר",
@@ -142,13 +158,6 @@ class HolidaySensor(SensorEntity):
         ]
 
         # Compute zmanim via Astral
-        loc = LocationInfo(
-            name="home",
-            region="",
-            timezone=self.hass.config.time_zone,
-            latitude=self.hass.config.latitude,
-            longitude=self.hass.config.longitude,
-        )
         z_t = sun(loc.observer, date=today, tzinfo=tz)
         z_y = sun(loc.observer, date=today - timedelta(days=1), tzinfo=tz)
         dawn = z_t["dawn"]
@@ -251,7 +260,7 @@ class HolidaySensor(SensorEntity):
                 attrs["שבועות א׳"] = True
                 attrs["שבועות א׳ וב׳"] = True
             if hd_py.day == 7:
-                attrs["שבועות ב'"] = True
+                attrs["שבועות ב׳"] = True
                 attrs["שבועות א׳ וב׳"] = True
 
         # Purim & Shushan Purim & Ta'anit Esther (month 12 or 13)
