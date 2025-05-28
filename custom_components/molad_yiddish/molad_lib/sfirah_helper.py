@@ -161,7 +161,7 @@ class SfirahHelper:
             return 15 + day
         # Sivan 1–5 → 45–49
         if month_name == "סיון" and day <= 5:
-            return 30 + day
+            return 44 + day
         return 0
 
     def get_effective_omer_day(self) -> int:
