@@ -294,8 +294,6 @@ class HolidaySensor(SensorEntity):
             attrs["צום עשרה בטבת"] = True
         if hd_py.month == 4 and hd_py.day == 17:
             attrs["צום שבעה עשר בתמוז"] = True
-        if hd_py.month == 5 and hd_py.day == 9:
-            attrs["תשעה באב"] = True
 
         # Rosh Chodesh
         if hd_py.day in (1, 30):
@@ -312,7 +310,8 @@ class HolidaySensor(SensorEntity):
         # תשעה באב נדחה: 10 Av on Sunday (month 5)
         if hd_py.month == 5 and hd_py.day == 10 and weekday == 6:
             attrs["תשעה באב נדחה"] = True
-            
+        elif hd_py.month == 5 and hd_py.day == 9:
+            attrs["תשעה באב"] = True   
         # Base six-parsha Shovavim
         shov_base = ["SHEMOT","VAERA","BO","BESHALACH","YITRO","MISHPATIM"]
         shov_ext  = shov_base + ["TERUMAH","TETZAVEH"]
