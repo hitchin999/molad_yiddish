@@ -74,16 +74,28 @@ class YiddishDateSensor(SensorEntity):
         # 1) initial fill (at startup or reboot)
         await self._update_state()
 
-        # 2) whenever HA starts up later
+        # 2) safe startup listener
+        def _on_startup(event):
+            self.hass.loop.call_soon_threadsafe(
+                self.hass.async_create_task,
+                self._update_state()
+            )
+
         self.hass.bus.async_listen(
             EVENT_HOMEASSISTANT_STARTED,
-            lambda event: self.hass.async_create_task(self._update_state()),
-)
+            _on_startup,
+        )
 
-        # 3) schedule the coroutine itself at sunset+offset
+        # 3) safe sunset listener
+        def _on_sunset(now):
+            self.hass.loop.call_soon_threadsafe(
+                self.hass.async_create_task,
+                self._update_state()
+            )
+
         async_track_sunset(
             self.hass,
-            self._update_state,           # <-- pass the async method directly
+            _on_sunset,
             offset=self._havdalah_offset,
         )
 
