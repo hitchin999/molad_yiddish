@@ -204,11 +204,10 @@ class MoladYiddishSensor(SensorEntity):
 
 
 class YiddishDayLabelSensor(SensorEntity):
-    """Sensor for standalone Yiddish day label, with Erev/Motzei Yom Tov."""
+    """Sensor for standalone Yiddish day label."""
 
     _attr_name = "Yiddish Day Label"
     _attr_unique_id = "yiddish_day_label"
-    _attr_icon = "mdi:star-four-points"
 
     def __init__(
         self,
@@ -220,41 +219,14 @@ class YiddishDayLabelSensor(SensorEntity):
         self.hass = hass
         self._candle = candle_offset
         self._havdalah = havdalah_offset
-
-    async def async_added_to_hass(self) -> None:
-        await self.async_update()
-
-        # Hourly fallback
-        async_track_time_interval(self.hass, self.async_update, timedelta(hours=1))
-
-        # Midnight update
-        async_track_time_change(
-            self.hass,
-            lambda now: self.hass.async_create_task(self.async_update()),
-            hour=0,
-            minute=0,
-            second=5,
-        )
-
-        # Sunset trigger
-        async_track_sunset(
-            self.hass,
-            lambda now: self.hass.async_create_task(self.async_update()),
-        )
+        self._state: str | None = None
+        async_track_time_interval(hass, self.async_update, timedelta(hours=1))
 
     @property
     def native_value(self) -> str | None:
         return self._state
 
     async def async_update(self, now=None) -> None:
-        from datetime import date, datetime, time, timedelta
-        from zoneinfo import ZoneInfo
-        from astral import LocationInfo
-        from astral.sun import sun
-        import pyluach.dates as pdates
-        from pyluach.hebrewcal import HebrewDate as PHebrewDate
-
-
         tz = ZoneInfo(self.hass.config.time_zone)
         loc = LocationInfo(
             latitude=self.hass.config.latitude,
@@ -262,66 +234,37 @@ class YiddishDayLabelSensor(SensorEntity):
             timezone=self.hass.config.time_zone,
         )
         current = datetime.now(tz)
-        wd = current.weekday()
         s = sun(loc.observer, date=current.date(), tzinfo=tz)
         candle = s["sunset"] - timedelta(minutes=self._candle)
         havdalah = s["sunset"] + timedelta(minutes=self._havdalah)
 
+        # Hebrew date
+        g = pdates.GregorianDate(current.year, current.month, current.day)
+        hdate = g.to_heb()
+        if current >= s["sunset"]:
+            hdate = PHebrewDate(hdate.year, hdate.month, hdate.day) + 1
 
-        # Erev Shabbos: Friday from noon until sunset
-        is_erev_shab = (
-            wd == 4
-            and current.time() >= time(12, 0)
-            and current < s["sunset"]
-        )
+        # Holiday
+        is_tov = bool(hdate.festival(israel=False, include_working_days=False))
 
-        # Shabbos day: Saturday from sunset until havdalah
-        is_shab = (
-            wd == 5
-            and s["sunset"] <= current < havdalah
-        )
+        # Shabbos
+        wd = current.weekday()
+        is_shab = (wd == 4 and current >= candle) or (wd == 5 and current < havdalah)
 
-        # Motzei Shabbos: Saturday from havdalah until midnight
-        
-        tomorrow = current.date() + timedelta(days=1)
-        midnight = datetime.combine(tomorrow, time(0, 0), tzinfo=tz)
-        is_motzei_shab = (
-            wd == 5
-            and current >= havdalah
-            and current < midnight
-        )
-
-        # Tomorrow’s Hebrew date for Erev Tov
-        tom = current.date() + timedelta(days=1)
-        tom_h = pdates.GregorianDate(tom.year, tom.month, tom.day).to_heb()
-
-        # Yom Tov flags
-        is_tov       = bool(PHebrewDate.from_pydate(current.date()).festival(israel=False, include_working_days=False))
-        is_erev_tov  = tom_h.festival(israel=False, include_working_days=False) and current >= candle and current < s["sunset"]
-        is_motzei_tov = is_tov and current >= havdalah
-
-        labels: list[str] = []
-        if is_erev_shab:
-            labels.append('ערש"ק')
-        if is_erev_tov:
-            labels.append('עריו"ט')
         if is_shab:
-            labels.append("שבת קודש")
-        if is_tov:
-            labels.append("יום טוב")
-        if is_motzei_shab:
-            labels.append('מוצש"ק')
-        if is_motzei_tov:
-            labels.append('מוציו"ט')
-
-        # fallback to weekday name
-        if not labels:
+            lbl = "שבת קודש"
+        elif is_tov:
+            lbl = "יום טוב"
+        elif wd == 4 and current.hour >= 12:
+            lbl = 'ערש\"ק'
+        elif wd == 5 and current >= havdalah:
+            lbl = 'מוצש\"ק'
+        else:
             days = ["זונטאג","מאנטאג","דינסטאג","מיטוואך","דאנערשטאג","פרייטאג","שבת"]
             idx = {6:0,0:1,1:2,2:3,3:4,4:5,5:6}[wd]
-            labels = [days[idx]]
+            lbl = days[idx]
 
-        self._state = " ו".join(labels)
-
+        self._state = lbl
 
     def update(self) -> None:
         self.hass.async_create_task(self.async_update())
