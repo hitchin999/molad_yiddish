@@ -193,8 +193,6 @@ class MeluchaProhibitionSensor(BinarySensorEntity):
             "festival_name":  festival_name,
             "is_yomtov":      is_yomtov,
             "is_shabbos": (festival_name == "Shabbos" and in_window),
-            "festival_start": str(start_date),
-            "festival_end":   str(end_date),
             "candle_eve":     eve_date.isoformat(),
             "sunset_eve":     s_eve.isoformat(),
             "sunset_final":   s_final.isoformat(),
