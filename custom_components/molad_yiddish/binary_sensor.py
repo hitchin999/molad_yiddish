@@ -204,15 +204,21 @@ class MeluchaProhibitionSensor(BinarySensorEntity):
         }
 
 class ErevHolidaySensor(BinarySensorEntity):
-    """True on specific Erev-days from dawn until candle-lighting."""
+    """True on specific Erev‐days from alos ha-shachar until candle-lighting."""
 
     _attr_name = "Molad Yiddish Erev"
     _attr_unique_id = "molad_yiddish_erev"
     _attr_icon = "mdi:weather-sunset-up"
 
+    # (Hebrew month, day) of Erev‐Yom‐Tov dates in the Hebrew calendar
     _EREV_DATES = {
-        (6, 29), (7, 9), (7, 14), (7, 21),
-        (9, 24), (1, 14), (3, 5),
+        (6, 29),  # ערב ראש השנה
+        (7, 9),   # ערב יום כיפור
+        (7, 14),  # ערב סוכות
+        (7, 21),  # הושענא רבה
+        (9, 24),  # ערב חנוכה
+        (1, 14),  # ערב פסח
+        (3, 5),   # ערב שבועות
     }
 
     def __init__(self, hass: HomeAssistant, candle_offset: int) -> None:
@@ -225,27 +231,41 @@ class ErevHolidaySensor(BinarySensorEntity):
             longitude=hass.config.longitude,
             timezone=hass.config.time_zone,
         )
-        async_track_time_interval(hass, self.async_update, timedelta(hours=1))
+        # poll every minute for precise on/off
+        async_track_time_interval(hass, self.async_update, timedelta(minutes=1))
         self._attr_extra_state_attributes: dict[str, any] = {}
 
     async def async_update(self, now: datetime | None = None) -> None:
+        # normalize to local timezone
         now = (now or datetime.now(self._tz)).astimezone(self._tz)
         today = now.date()
+
+        # is today an Erev‐Yom‐Tov day?
         hd = PHebrewDate.from_pydate(today)
         is_erev = (hd.month, hd.day) in self._EREV_DATES
 
+        # get zmanim
         s = sun(self._loc.observer, date=today, tzinfo=self._tz)
-        dawn = s["dawn"]
-        start = dawn
-        end = s["sunset"] - timedelta(minutes=self._candle)
-        self._attr_is_on = is_erev and (start <= now < end)
+        alos = s["dawn"]  # astronomical/civil dawn as alos ha-shachar
+        sunset = s["sunset"]
 
+        # window: from dawn until sunset - candle_offset
+        window_start = alos
+        window_end = sunset - timedelta(minutes=self._candle)
+
+        # determine state
+        self._attr_is_on = is_erev and (window_start <= now < window_end)
+
+        # expose attributes
         self._attr_extra_state_attributes = {
             "now": now.isoformat(),
             "is_erev": is_erev,
-            "window_start": start.isoformat(),
-            "window_end": end.isoformat(),
+            "alos": alos.isoformat(),
+            "candle_time": window_end.isoformat(),
+            "window_start": window_start.isoformat(),
+            "window_end": window_end.isoformat(),
         }
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
