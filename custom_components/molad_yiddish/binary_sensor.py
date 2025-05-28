@@ -236,35 +236,44 @@ class ErevHolidaySensor(BinarySensorEntity):
         self._attr_extra_state_attributes: dict[str, any] = {}
 
     async def async_update(self, now: datetime | None = None) -> None:
-        # normalize to local timezone
+        # 1) normalize to local timezone
         now = (now or datetime.now(self._tz)).astimezone(self._tz)
         today = now.date()
 
-        # is today an Erev‐Yom‐Tov day?
-        hd = PHebrewDate.from_pydate(today)
-        is_erev = (hd.month, hd.day) in self._EREV_DATES
-
-        # get zmanim
+        # 2) get zmanim
         s = sun(self._loc.observer, date=today, tzinfo=self._tz)
-        alos = s["dawn"]  # astronomical/civil dawn as alos ha-shachar
+        alos = s["dawn"]
         sunset = s["sunset"]
 
-        # window: from dawn until sunset - candle_offset
-        window_start = alos
-        window_end = sunset - timedelta(minutes=self._candle)
+        # 3) is today an Erev‐Yom‐Tov day?
+        hd = PHebrewDate.from_pydate(today)
+        is_erev_holiday = (hd.month, hd.day) in self._EREV_DATES
 
-        # determine state
+        # 4) also treat every Friday before candle-lighting as Erev Shabbos
+        candle_time = sunset - timedelta(minutes=self._candle)
+        is_erev_shabbos = (today.weekday() == 4) and (now < candle_time)
+
+        # 5) combine both
+        is_erev = is_erev_holiday or is_erev_shabbos
+
+        # 6) window: from dawn until candle-lighting
+        window_start = alos
+        window_end = candle_time
+
+        # 7) determine state
         self._attr_is_on = is_erev and (window_start <= now < window_end)
 
-        # expose attributes
+        # 8) debug attributes
         self._attr_extra_state_attributes = {
             "now": now.isoformat(),
-            "is_erev": is_erev,
+            "is_erev_holiday": is_erev_holiday,
+            "is_erev_shabbos": is_erev_shabbos,
             "alos": alos.isoformat(),
-            "candle_time": window_end.isoformat(),
+            "candle_time": candle_time.isoformat(),
             "window_start": window_start.isoformat(),
             "window_end": window_end.isoformat(),
         }
+
 
 
 async def async_setup_entry(
