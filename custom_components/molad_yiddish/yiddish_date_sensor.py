@@ -1,14 +1,16 @@
-#homeassistant/custom_components/molad_yiddish/yiddish_date_sensor.py
+# homeassistant/custom_components/molad_yiddish/yiddish_date_sensor.py
 from __future__ import annotations
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
+
+from astral import LocationInfo
+from astral.sun import sun
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.event import (
-    async_track_time_change,
-    async_track_sunset,
-)
+from homeassistant.helpers.event import async_track_sunset
+from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
 
 from pyluach.hebrewcal import Year, HebrewDate as PHebrewDate
 from .molad_lib.helper import int_to_hebrew
@@ -33,7 +35,7 @@ def get_hebrew_month_name(month: int, year: int) -> str:
     return {
         1:  "ניסן",
         2:  "אייר",
-        3:  "סיוון",
+        3:  "סיון",
         4:  "תמוז",
         5:  "אב",
         6:  "אלול",
@@ -46,8 +48,8 @@ def get_hebrew_month_name(month: int, year: int) -> str:
 
 
 class YiddishDateSensor(SensorEntity):
-    """Today's Hebrew date in Yiddish formatting,
-       updates at 00:00 and at sunset+havdalah_offset."""
+    """Today’s Hebrew date in Yiddish formatting,
+       flips at sunset+havdalah_offset only."""
 
     _attr_name = "Yiddish Date"
     _attr_unique_id = "yiddish_date"
@@ -56,25 +58,33 @@ class YiddishDateSensor(SensorEntity):
     def __init__(self, hass: HomeAssistant, havdalah_offset: int) -> None:
         super().__init__()
         self.hass = hass
-        self._havdalah_offset = havdalah_offset
+        self._havdalah_offset = timedelta(minutes=havdalah_offset)
+
+        # for calculating local sunset
+        self._tz = ZoneInfo(hass.config.time_zone)
+        self._loc = LocationInfo(
+            latitude=hass.config.latitude,
+            longitude=hass.config.longitude,
+            timezone=hass.config.time_zone,
+        )
+
         self._state: str | None = None
 
     async def async_added_to_hass(self) -> None:
-        # 1) initial fill
+        # 1) initial fill (at startup or reboot)
         await self._update_state()
 
-        # 2) update right at local midnight
-        async_track_time_change(
-            self.hass,
-            lambda now: self.hass.async_create_task(self._update_state()),
-            hour=0, minute=0, second=5,
-        )
+        # 2) whenever HA starts up later
+        self.hass.bus.async_listen(
+            EVENT_HOMEASSISTANT_STARTED,
+            lambda event: self.hass.async_create_task(self._update_state()),
+)
 
-        # 3) update at sunset + havdalah_offset
+        # 3) schedule the coroutine itself at sunset+offset
         async_track_sunset(
             self.hass,
-            lambda now: self.hass.async_create_task(self._update_state()),
-            offset=timedelta(minutes=self._havdalah_offset),
+            self._update_state,           # <-- pass the async method directly
+            offset=self._havdalah_offset,
         )
 
     @property
@@ -82,22 +92,29 @@ class YiddishDateSensor(SensorEntity):
         return self._state or ""
 
     async def _update_state(self) -> None:
-        today = date.today()
-        heb = PHebrewDate.from_pydate(today)
+        """Recompute what “today” means (Hebrew date) based on now vs. sunset+offset."""
+        now = datetime.now(self._tz)
+        # compute today’s local sunset
+        s = sun(self._loc.observer, date=now.date(), tzinfo=self._tz)
+        switch_time = s["sunset"] + self._havdalah_offset
 
-        # day → Hebrew numerals
-        day_heb = int_to_hebrew(heb.day)
-        # month → accurate name including Adar I/II
+        # if we’re already past sunset+offset, treat as "tomorrow"
+        py_date = (
+            now.date() + timedelta(days=1)
+            if now >= switch_time
+            else now.date()
+        )
+
+        # now convert that python date to a Hebrew date
+        heb = PHebrewDate.from_pydate(py_date)
+        day_heb   = int_to_hebrew(heb.day)
         month_heb = get_hebrew_month_name(heb.month, heb.year)
-        # year → last three digits (e.g. 5785 → 785 → תשפ״ה)
-        year_num = heb.year % 1000
-        year_heb = int_to_hebrew(year_num)
+        year_num  = heb.year % 1000
+        year_heb  = int_to_hebrew(year_num)
 
-        # raw state with Hebrew geresh/gershayim
+        # assemble and normalize quotes
         state = f"{day_heb} {month_heb} {year_heb}"
-        # convert only for this sensor to ASCII quotes
         state = state.replace("\u05F4", '"').replace("\u05F3", "'")
 
         self._state = state
         self.async_write_ha_state()
-        
