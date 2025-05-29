@@ -350,8 +350,9 @@ class UpcomingShabbosMevorchimSensor(BinarySensorEntity):
         return "mdi:star-outline"
 
 
+
 class RoshChodeshTodaySensor(SensorEntity):
-    """Reports if right now is within a Rosh Chodesh interval in Yiddish (א or ב)."""
+    """True during each day of Rosh Chodesh; shows א׳/ב׳ when there are two days."""
 
     _attr_name = "Rosh Chodesh Today Yiddish"
     _attr_unique_id = "rosh_chodesh_today_yiddish"
@@ -364,67 +365,80 @@ class RoshChodeshTodaySensor(SensorEntity):
         self._havdalah_offset = havdalah_offset
         self._attr_native_value = None
 
+    # ──────────────────────────────
+    # Set up listeners
+    # ──────────────────────────────
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
 
-        # Initial population
+        # Immediate update
         await self.async_update()
 
-        # Hourly updates
+        # Hourly refresh
         async_track_time_interval(
             self.hass,
-            lambda now: self.hass.async_create_task(self.async_update()),
+            lambda _now: self.hass.async_create_task(self.async_update()),
             timedelta(hours=1),
         )
 
-        # When molad sensor changes
+        # Anytime the main molad sensor changes
         async_track_state_change_event(
             self.hass,
             "sensor.molad_yiddish",
-            lambda event: self.async_schedule_update_ha_state(),
+            lambda _event: self.async_schedule_update_ha_state(),
         )
 
-        # At sunset + havdalah
+        # Sunset + havdalah offset
         async_track_sunset(
             self.hass,
-            lambda now: self.hass.async_create_task(self.async_update()),
+            lambda _now: self.hass.async_create_task(self.async_update()),
             offset=timedelta(minutes=self._havdalah_offset),
         )
 
-    async def async_update(self, now=None) -> None:
-        from zoneinfo import ZoneInfo
+    # ──────────────────────────────
+    # Core calculation
+    # ──────────────────────────────
+    async def async_update(self, _now: datetime | None = None) -> None:
+        """Compute whether *now* is inside any Rosh‑Chodesh interval."""
         tz = ZoneInfo(self.hass.config.time_zone)
-        now = now or datetime.now(tz)
+        now = _now or datetime.now(tz)
 
+        # Pull data from master molad sensor
         main = self.hass.states.get("sensor.molad_yiddish")
         attr = main.attributes if main else {}
         nf_list = attr.get("rosh_chodesh_nightfall") or []
         month = attr.get("month_name", "")
 
-        nf_datetimes: list[datetime] = []
-        for item in nf_list:
-            if isinstance(item, datetime):
-                nf_datetimes.append(item)
-            else:
-                nf_datetimes.append(datetime.fromisoformat(item))
+        # Convert strings → datetime
+        nf_datetimes: list[datetime] = [
+            dt if isinstance(dt, datetime) else datetime.fromisoformat(dt) for dt in nf_list
+        ]
 
-        active_index = None
-        for i, dt in enumerate(nf_datetimes):
-            if now >= dt:
+        # Determine active index (None when not Rosh Chodesh)
+        active_index: int | None = None
+        for i, start in enumerate(nf_datetimes):
+            end = nf_datetimes[i + 1] if i + 1 < len(nf_datetimes) else start + timedelta(days=1)
+            if start <= now < end:
                 active_index = i
+                break
 
+        # Build display value
         if active_index is not None:
             if len(nf_datetimes) == 1:
                 val = f"ראש חודש {month}"
             else:
-                prefix = ["א", "ב"][active_index] + "׳"
+                prefix = ("א", "ב")[active_index] + "׳"
                 val = f"{prefix} ד׳ראש חודש {month}"
         else:
             val = "Not Rosh Chodesh Today"
 
         self._attr_native_value = val
 
+    # ──────────────────────────────
+    # Availability (HA shows entity grayed‑out when False)
+    # ──────────────────────────────
     @property
     def available(self) -> bool:
         main = self.hass.states.get("sensor.molad_yiddish")
         return bool(main and main.attributes.get("rosh_chodesh_nightfall"))
+
