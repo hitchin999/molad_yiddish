@@ -24,25 +24,35 @@ class PerekAvotSensor(SensorEntity):
         self._attr_native_value = "נישט אין די צייט פון פרקי אבות"
 
     async def async_added_to_hass(self) -> None:
+        # 1) Do an immediate population
         await self._update_state()
 
-        # Update daily just after midnight
+        # 2) Define a coroutine listener for midnight updates
+        async def _midnight_update(now):
+            await self._update_state()
+
+        # 3) Define a coroutine listener for periodic backups
+        async def _periodic_update(now):
+            await self._update_state()
+
+        # 4) Schedule the midnight update at 00:00:05 every day
         async_track_time_change(
             self.hass,
-            lambda now: self.hass.async_create_task(self._update_state()),
+            _midnight_update,
             hour=0,
             minute=0,
             second=5,
         )
 
-        # Backup: every 6 hours
+        # 5) Schedule the periodic update every hour
         async_track_time_interval(
             self.hass,
-            lambda now: self.hass.async_create_task(self._update_state()),
+            _periodic_update,
             timedelta(hours=1),
         )
 
     async def _update_state(self) -> None:
+        """Compute which Pirkei Avot chapter should be the sensor state today."""
         today_py = date.today()
         today_hd = pdates.HebrewDate.from_pydate(today_py)
 
@@ -67,4 +77,5 @@ class PerekAvotSensor(SensorEntity):
             state = "נישט אין די צייט פון פרקי אבות"
 
         self._attr_native_value = state
+        # Write the updated state back to HA
         self.async_write_ha_state()
