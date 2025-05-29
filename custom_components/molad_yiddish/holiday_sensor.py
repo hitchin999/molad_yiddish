@@ -1,7 +1,9 @@
 # holiday_sensor.py
 """
 Separate HolidaySensor for Molad Yiddish integration.
-Handles Jewish holidays, fast days, and custom periods with time-aware logic.
+Handles Jewish holidays, fast days, and custom periods with time-aware logic,
+restores its last state across reboots, and filters the visible state
+through a whitelist while still exposing all flags.
 """
 from __future__ import annotations
 import datetime
@@ -19,16 +21,115 @@ from pyluach.parshios import getparsha_string
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.restore_state import RestoreEntity
 
 _LOGGER = logging.getLogger(__name__)
 
-class HolidaySensor(SensorEntity):
+
+class HolidaySensor(RestoreEntity, SensorEntity):
     """
     Tracks Jewish holidays, fasts, and custom periods with time-aware logic.
+    - Restores its last visible state on reboot
+    - Exposes ALL holiday flags as attributes
+    - Uses ALLOWED_HOLIDAYS to pick exactly one for its state
     """
     _attr_name = "Molad Yiddish Holiday"
     _attr_unique_id = "molad_yiddish_holiday"
     _attr_icon = "mdi:calendar-star"
+
+    # ─── THE FULL SET of every holiday you detect (for attributes) ───
+    ALL_HOLIDAYS: list[str] = [
+        "א׳ סליחות",
+        "ערב ראש השנה",
+        "ראש השנה א׳",
+        "ראש השנה ב׳",
+        "ראש השנה א׳ וב׳",
+        "צום גדליה",
+        "שלוש עשרה מדות",
+        "ערב יום כיפור",
+        "יום הכיפורים",
+        "ערב סוכות",
+        "סוכות א׳",
+        "סוכות ב׳",
+        "סוכות א׳ וב׳",
+        "א׳ דחול המועד סוכות",
+        "ב׳ דחול המועד סוכות",
+        "ג׳ דחול המועד סוכות",
+        "ד׳ דחול המועד סוכות",
+        "חול המועד סוכות",
+        "הושענא רבה",
+        "שמיני עצרת",
+        "שמחת תורה",
+        "ערב חנוכה",
+        "חנוכה",
+        "שובבים",
+        "שובבים ת\"ת",
+        "צום עשרה בטבת",
+        "ט\"ו בשבט",
+        "תענית אסתר",
+        "פורים",
+        "שושן פורים",
+        "ליל בדיקת חמץ",
+        "ערב פסח",
+        "פסח א׳",
+        "פסח ב׳",
+        "פסח א׳ וב׳",
+        "חול המועד פסח",
+        "שביעי של פסח",
+        "אחרון של פסח",
+        "ל\"ג בעומר",
+        "ערב שבועות",
+        "שבועות א׳",
+        "שבועות ב׳",
+        "שבועות א׳ וב׳",
+        "צום שבעה עשר בתמוז",
+        "תשעה באב",
+        "תשעה באב נדחה",
+        "ראש חודש",
+    ]
+
+    # ─── Only these may become the sensor.state ───
+    ALLOWED_HOLIDAYS: set[str] = {
+        "א׳ סליחות",
+        "ערב ראש השנה",
+        "ראש השנה א׳",
+        "ראש השנה ב׳",
+        "צום גדליה",
+        "שלוש עשרה מדות",
+        "ערב יום כיפור",
+        "יום הכיפורים",
+        "ערב סוכות",
+        "סוכות א׳",
+        "סוכות ב׳",
+        "א׳ דחול המועד סוכות",
+        "ב׳ דחול המועד סוכות",
+        "ג׳ דחול המועד סוכות",
+        "ד׳ דחול המועד סוכות",
+        "הושענא רבה",
+        "שמיני עצרת",
+        "שמחת תורה",
+        "ערב חנוכה",
+        "חנוכה",
+        "צום עשרה בטבת",
+        "ט\"ו בשבט",
+        "תענית אסתר",
+        "פורים",
+        "שושן פורים",
+        "ליל בדיקת חמץ",
+        "ערב פסח",
+        "פסח א׳",
+        "פסח ב׳",
+        "חול המועד פסח",
+        "שביעי של פסח",
+        "אחרון של פסח",
+        "ל\"ג בעומר",
+        "ערב שבועות",
+        "שבועות א׳",
+        "שבועות ב׳",
+        "צום שבעה עשר בתמוז",
+        "תשעה באב",
+        "תשעה באב נדחה",        
+    }    
 
     def __init__(
         self,
@@ -40,11 +141,24 @@ class HolidaySensor(SensorEntity):
         self.hass = hass
         self._candle_offset = candle_offset
         self._havdalah_offset = havdalah_offset
-        self._attr_native_value = ""
+
+        # initial state + full attrs
+        self._attr_native_value: str = ""
         self._attr_extra_state_attributes: dict[str, bool | int] = {}
-        # Update every minute to catch boundaries
+
+        # Hebrew names
+        set_language("he")
+
+        # schedule minute‐interval updates
         async_track_time_interval(hass, self.async_update, timedelta(minutes=1))
-        set_language("he")  # ensure holiday names in Hebrew
+
+    async def async_added_to_hass(self) -> None:
+        # Restore last state/attributes on startup
+        await super().async_added_to_hass()
+        last = await self.async_get_last_state()
+        if last:
+            self._attr_native_value = last.state or ""
+            self._attr_extra_state_attributes = dict(last.attributes)
 
     @property
     def native_value(self) -> str:
@@ -53,98 +167,40 @@ class HolidaySensor(SensorEntity):
     @property
     def extra_state_attributes(self) -> dict[str, bool | int]:
         return self._attr_extra_state_attributes
-        
+
     async def async_update(self, now: datetime.datetime | None = None) -> None:
         if self.hass is None:
             return
 
-        # 1) Now & base today
-        tz   = ZoneInfo(self.hass.config.time_zone)
-        now  = now or datetime.datetime.now(tz)
+        # 1) Determine “today” in local tz, bump past sunset for candle‐lighting
+        tz = ZoneInfo(self.hass.config.time_zone)
+        now = now or datetime.datetime.now(tz)
         today = now.date()
 
-        # ─── Option B: bump Hebrew "date" at sunset − candle_offset ────────────────
-        loc    = LocationInfo(
-            name="home",
-            region="",
-            timezone=self.hass.config.time_zone,
-            latitude=self.hass.config.latitude,
-            longitude=self.hass.config.longitude,
+        loc = LocationInfo(
+            name="home", region="", timezone=self.hass.config.time_zone,
+            latitude=self.hass.config.latitude, longitude=self.hass.config.longitude
         )
-        s        = sun(loc.observer, date=today, tzinfo=tz)
-        sunset   = s["sunset"]
+        s = sun(loc.observer, date=today, tzinfo=tz)
+        if now >= s["sunset"] - timedelta(minutes=self._candle_offset):
+            today += timedelta(days=1)
 
-        # If we're past candle-lighting, roll into the next Hebrew day
-        if now >= sunset - timedelta(minutes=self._candle_offset):
-            today = today + timedelta(days=1)
-        # ────────────────────────────────────────────────────────────────────────────
-
-        # 2) Hebrew date info on the (possibly bumped) date
+        # 2) Hebrew date info
         heb_info = HDateInfo(today, diaspora=True)
         hd_py    = PHebrewDate.from_pydate(today)
-        
-        # Initialize attributes: festivals, fasts, and custom periods
-        attrs: dict[str, bool | int] = {
-            **{name: False for name in [
-                "א׳ סליחות",
-                "ערב ראש השנה",
-                "ראש השנה א׳",
-                "ראש השנה ב׳",
-                "ראש השנה א׳ וב׳",
-                "צום גדליה",
-                "שלוש עשרה מדות",
-                "ערב יום כיפור",
-                "יום הכיפורים",
-                "ערב סוכות",
-                "סוכות א׳",
-                "סוכות ב׳",
-                "סוכות א׳ וב׳",
-                "חול המועד סוכות",
-                "הושענא רבה",
-                "שמיני עצרת",
-                "שמחת תורה",
-                "ערב חנוכה",
-                "חנוכה",
-                "שובבים",
-                "שובבים ת\"ת",
-                "צום עשרה בטבת",
-                "ט\"ו בשבט",
-                "תענית אסתר",
-                "פורים",
-                "שושן פורים",
-                "ליל בדיקת חמץ",
-                "ערב פסח",
-                "פסח א׳",
-                "פסח ב׳",
-                "פסח א׳ וב׳",
-                "חול המועד פסח",
-                "שביעי של פסח",
-                "אחרון של פסח",
-                "ל\"ג בעומר",
-                "ערב שבועות",
-                "שבועות א׳",
-                "שבועות ב׳",
-                "שבועות א׳ וב׳",
-                "צום שבעה עשר בתמוז",
-                "תשעה באב",
-                "תשעה באב נדחה",
-                "ראש חודש",
-                "תענית מתחילה עכשיו"
-            ]},
-            "מען פאַסט אויס און": None,
-        }
 
-        # 3) Leap-year and Shovavim
-        year      = hd_py.year
-        is_leap   = ((year * 7 + 1) % 19) < 7
-        parsha    = getparsha_string(hd_py).upper()
-        shov_base = ["SHEMOT","VAERA","BO","BESHALACH","YITRO","MISHPATIM"]
-        shov_ext  = shov_base + ["TERUMAH","TETZAVEH"]
+        # 3) Leap‐year flag for Shovavim
+        year    = hd_py.year
+        is_leap = ((year * 7 + 1) % 19) < 7
 
-        attrs["שובבים"]      = parsha in shov_base
-        attrs["שובבים ת\"ת"] = is_leap and (parsha in shov_ext)
+        # 4) Compute zmanim for dawn/yesterday’s sunset
+        z_t = sun(loc.observer, date=today, tzinfo=tz)
+        z_y = sun(loc.observer, date=today - timedelta(days=1), tzinfo=tz)
+        dawn = z_t["dawn"]
+        yesterday_sunset = z_y["sunset"]
+        today_sunset = z_t["sunset"]
 
-        # 4) Determine holiday/fast using original logic
+        # 5) Holiday vs. fast logic (exactly as you had it)
         hol_name   = hd_py.holiday(hebrew=True, prefix_day=True)
         is_holiday = bool(hol_name and (heb_info.is_holiday or heb_info.is_yom_tov))
         is_fast    = hol_name in [
@@ -157,27 +213,27 @@ class HolidaySensor(SensorEntity):
             "תשעה באב נדחה",
         ]
 
-        # Compute zmanim via Astral
-        z_t = sun(loc.observer, date=today, tzinfo=tz)
-        z_y = sun(loc.observer, date=today - timedelta(days=1), tzinfo=tz)
-        dawn = z_t["dawn"]
-        today_sunset = z_t["sunset"]
-        yesterday_sunset = z_y["sunset"]
-
-        # Start and end times
+        # 6) Compute start_time per‐fast (sunset–offset for YK & Tisha B’Av, else dawn)
         start_time = None
         if is_holiday:
+            # Yomim Tovim all start at candle‐lighting
             start_time = yesterday_sunset - timedelta(minutes=self._candle_offset)
         if is_fast:
             if hol_name in ["יום הכיפורים", "תשעה באב", "תשעה באב נדחה"]:
                 start_time = yesterday_sunset - timedelta(minutes=self._candle_offset)
             else:
                 start_time = dawn
+
+        # 7) Fast end is always havdalah‐offset after sunset
         end_time = None
         if is_holiday or is_fast:
             end_time = today_sunset + timedelta(minutes=self._havdalah_offset)
 
-
+        # 8) Build your full attrs dict in order
+        attrs: dict[str, bool | int] = {}
+        for name in self.ALL_HOLIDAYS:
+            attrs[name] = False
+        attrs["מען פאַסט אויס און"] = None
 
         # Map holiday booleans
         # Rosh HaShanah: month 7 days 1-2
@@ -208,8 +264,19 @@ class HolidaySensor(SensorEntity):
             if hd_py.day == 16:
                 attrs["סוכות ב׳"] = True
                 attrs["סוכות א׳ וב׳"] = True
-            if 17 <= hd_py.day <= 21:
+            if hd_py.day == 17:
+                attrs["א׳ דחול המועד סוכות"] = True
                 attrs["חול המועד סוכות"] = True
+            if hd_py.day == 18:
+                attrs["ב׳ דחול המועד סוכות"] = True
+                attrs["חול המועד סוכות"] = True
+            if hd_py.day == 19:
+                attrs["ג׳ דחול המועד סוכות"] = True
+                attrs["חול המועד סוכות"] = True
+            if hd_py.day == 20:
+                attrs["ד׳ דחול המועד סוכות"] = True
+                attrs["חול המועד סוכות"] = True
+            
             if hd_py.day == 21:
                 attrs["הושענא רבה"] = True
             if hd_py.day == 22:
@@ -294,6 +361,8 @@ class HolidaySensor(SensorEntity):
             attrs["צום עשרה בטבת"] = True
         if hd_py.month == 4 and hd_py.day == 17:
             attrs["צום שבעה עשר בתמוז"] = True
+        if hd_py.month == 5 and hd_py.day == 9:
+            attrs["תשעה באב"] = True
 
         # Rosh Chodesh
         if hd_py.day in (1, 30):
@@ -310,30 +379,45 @@ class HolidaySensor(SensorEntity):
         # תשעה באב נדחה: 10 Av on Sunday (month 5)
         if hd_py.month == 5 and hd_py.day == 10 and weekday == 6:
             attrs["תשעה באב נדחה"] = True
-        elif hd_py.month == 5 and hd_py.day == 9:
-            attrs["תשעה באב"] = True   
+            
         # Base six-parsha Shovavim
         shov_base = ["SHEMOT","VAERA","BO","BESHALACH","YITRO","MISHPATIM"]
         shov_ext  = shov_base + ["TERUMAH","TETZAVEH"]
 
-        parsha = getparsha_string(hd_py).upper()
+        parsha = (getparsha_string(hd_py) or "").upper()
         attrs["שובבים"]     = parsha in shov_base
         attrs["שובבים ת\"ת"] = is_leap and (parsha in shov_ext)
 
+        # ── COUNTDOWN until havdalah for any fast day, formatted HH:MM ──
+        FAST_FLAGS = [
+            "יום הכיפורים",
+            "צום גדליה",
+            "תענית אסתר",
+            "צום עשרה בטבת",
+            "צום שבעה עשר בתמוז",
+            "תשעה באב",
+            "תשעה באב נדחה",
+        ]
+        if any(attrs.get(f) for f in FAST_FLAGS):
+            end_time = today_sunset + timedelta(minutes=self._havdalah_offset)
+            remaining = int((end_time - now).total_seconds())
+            # never negative
+            remaining = max(0, remaining)
+            hours = remaining // 3600
+            minutes = (remaining % 3600) // 60
+            # format as "HH:MM"
+            attrs["מען פאַסט אויס און"] = f"{hours:02d}:{minutes:02d}"
+        else:
+            attrs["מען פאַסט אויס און"] = None
 
+        # ────────────────────────────────────────────────
+        # 10) PICK exactly one allowed holiday for the visible state
+        picked: str | None = None
+        for name in self.ALLOWED_HOLIDAYS:
+            if attrs.get(name) is True:
+                picked = name
+                break
 
-        # Starting now triggers
-        if start_time and now >= start_time:
-            if is_holiday:
-                attrs["פסח מתחיל עכשיו"] = True
-            if is_fast:
-                attrs["תענית מתחילה עכשיו"] = True
-
-        # Fast countdown
-        if is_fast and end_time:
-            attrs["מען פאַסט אויס און"] = max(0, int((end_time - now).total_seconds()))
-
-        # Set state and attributes
-        self._attr_native_value = hol_name or ""
+        # 11) EXPOSE full attrs, but state is only the picked one
+        self._attr_native_value = picked or ""
         self._attr_extra_state_attributes = attrs
-        
