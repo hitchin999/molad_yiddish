@@ -52,7 +52,7 @@ DAY_MAPPING = {
 }
 
 MONTH_MAPPING = {
-    "Tishri": "תשרי", "Cheshvan": "חשוון", "Kislev": "כסלו",
+    "Tishri": "תשרי", "Cheshvan": "חשון", "Kislev": "כסלו",
     "Tevet": "טבת", "Shvat": "שבט", "Adar": "אדר",
     "Adar I": "אדר א", "Adar II": "אדר ב", "Nissan": "ניסן",
     "Iyar": "אייר", "Sivan": "סיון", "Tammuz": "תמוז",
