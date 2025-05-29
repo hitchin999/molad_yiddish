@@ -25,9 +25,9 @@ def is_shabbat(gdate: datetime.date) -> bool:
 _HD2PY = {
     "NISSAN":   1, "IYYAR":    2, "SIVAN":    3,
     "TAMMUZ":   4, "AV":       5, "ELUL":     6,
-    "TISHREI":  7, "CHESHVAN": 8, "KISLEV":   9,
+    "TISHREI":  7, "CHESHVAN": 8, "MARCHESHVAN": 8, 
     "TEVET":   10, "SHEVAT":  11, "ADAR":    12,
-    "ADAR_I":  12, "ADAR_II": 13,
+    "KISLEV":   9, "ADAR_I":  12, "ADAR_II": 13,
 }
 
 class Molad:
