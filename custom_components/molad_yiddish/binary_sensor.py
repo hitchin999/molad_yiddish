@@ -1,32 +1,32 @@
 # /config/custom_components/molad_yiddish/binary_sensor.py
 from __future__ import annotations
 import logging
-import datetime
 from datetime import datetime, timedelta
-from homeassistant.util import dt as dt_util
-from zoneinfo import ZoneInfo
 
-
-from astral import LocationInfo
-from astral.sun import sun
-from astral import Observer
-from homeassistant.helpers.entity import Entity
-from hdate import HDateInfo
-from pyluach.hebrewcal import HebrewDate as PHebrewDate
-from pyluach import dates, hebrewcal
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.const import STATE_ON
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.event import (
     async_track_time_interval,
     async_track_state_change_event,
     async_track_time_change,
     async_track_sunset,
 )
+from homeassistant.core import HomeAssistant
 from homeassistant.components.binary_sensor import BinarySensorEntity
+from homeassistant.util import dt as dt_util
+from zoneinfo import ZoneInfo
+
+from astral import LocationInfo
+from astral.sun import sun
+from hdate import HDateInfo
+from pyluach.hebrewcal import HebrewDate as PHebrewDate
 
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
+
+
 
 
 # ─── Your override map ────────────────────────────────────────────────────────
@@ -83,34 +83,141 @@ SLUG_OVERRIDES: dict[str, str] = {
 # ─── The fixed dynamic‐attribute binary sensor ────────────────────────────────
 
 
-class HolidayAttributeBinarySensor(BinarySensorEntity):
-    """Mirrors one attribute from sensor.molad_yiddish_holiday."""
+class HolidayAttributeBinarySensor(RestoreEntity, BinarySensorEntity):
+    """Mirrors one attribute from sensor.molad_yiddish_holiday, with restore-on-reboot."""
+
     def __init__(self, hass: HomeAssistant, attr_name: str) -> None:
         super().__init__()
         self.hass = hass
         self.attr_name = attr_name
+        # display info
         self._attr_name = f"Yiddish Holiday {attr_name}"
-        slug = SLUG_OVERRIDES.get(attr_name) or (
-            attr_name.lower().replace(" ", "_")
-                      .replace("׳", "").replace('"', "")
+        slug = (
+            attr_name.lower()
+                     .replace(" ", "_")
+                     .replace("׳", "")
+                     .replace('"', "")
         )
         self._attr_unique_id = f"yiddish_holiday_{slug}"
-        self.entity_id = f"binary_sensor.yiddish_holiday_{slug}"
         self._attr_icon = "mdi:checkbox-marked-circle-outline"
-        self._attr_extra_state_attributes = {}
+        self._attr_extra_state_attributes: dict[str, any] = {}
+
+    def _schedule_update(self, *_args) -> None:
+        """Thread-safe scheduling of async_update on the event loop."""
+        self.hass.loop.call_soon_threadsafe(
+            lambda: self.hass.async_create_task(self.async_update())
+        )
 
     async def async_added_to_hass(self) -> None:
-        # run once immediately…
-        await self.async_update()
-        # …and then every minute thereafter
+        # 1) restore last known state
+        await super().async_added_to_hass()
+        last = await self.async_get_last_state()
+        if last:
+            self._attr_is_on = (last.state == STATE_ON)
+
+        # 2) one immediate sync if source exists
+        if self.hass.states.get("sensor.molad_yiddish_holiday"):
+            await self.async_update()
+
+        # 3a) update on attribute change events
+        async_track_state_change_event(
+            self.hass,
+            "sensor.molad_yiddish_holiday",
+            self._schedule_update,
+        )
+
+        # 3b) poll once a minute
         async_track_time_interval(
-            self.hass, self.async_update, timedelta(minutes=1)
+            self.hass,
+            self._schedule_update,
+            timedelta(minutes=1),
+        )
+
+    async def async_update(self, now=None) -> None:
+        src = self.hass.states.get("sensor.molad_yiddish_holiday")
+        self._attr_is_on = bool(src and src.attributes.get(self.attr_name, False))
+
+
+class ErevHolidaySensor(RestoreEntity, BinarySensorEntity):
+    """True on specific Erev‐days from alos ha-shachar until candle-lighting, with restore-on-reboot."""
+
+    _attr_name = "Molad Yiddish Erev"
+    _attr_unique_id = "molad_yiddish_erev"
+    _attr_icon = "mdi:weather-sunset-up"
+
+    # (Hebrew month, day) of Erev‐Yom‐Tov dates
+    _EREV_DATES = {
+        (6, 29),  # ערב ראש השנה
+        (7, 9),   # ערב יום כיפור
+        (7, 14),  # ערב סוכות
+        (7, 21),  # הושענא רבה
+        (9, 24),  # ערב חנוכה
+        (1, 14),  # ערב פסח
+        (3, 5),   # ערב שבועות
+    }
+
+    def __init__(self, hass: HomeAssistant, candle_offset: int) -> None:
+        super().__init__()
+        self.hass = hass
+        self._candle = candle_offset
+        self._tz = ZoneInfo(hass.config.time_zone)
+        self._loc = LocationInfo(
+            latitude=hass.config.latitude,
+            longitude=hass.config.longitude,
+            timezone=hass.config.time_zone,
+        )
+        self._attr_extra_state_attributes: dict[str, any] = {}
+
+    def _schedule_update(self, *_args) -> None:
+        """Thread-safe scheduling of async_update on the event loop."""
+        self.hass.loop.call_soon_threadsafe(
+            lambda: self.hass.async_create_task(self.async_update())
+        )
+
+    async def async_added_to_hass(self) -> None:
+        # 1) restore last known state
+        await super().async_added_to_hass()
+        last = await self.async_get_last_state()
+        if last:
+            self._attr_is_on = (last.state == STATE_ON)
+
+        # 2) immediate first update
+        await self.async_update()
+
+        # 3) poll every minute safely
+        async_track_time_interval(
+            self.hass,
+            self._schedule_update,
+            timedelta(minutes=1),
         )
 
     async def async_update(self, now: datetime | None = None) -> None:
-        state = self.hass.states.get("sensor.molad_yiddish_holiday")
-        self._attr_is_on = bool(state and state.attributes.get(self.attr_name, False))
+        now = (now or datetime.now(self._tz)).astimezone(self._tz)
+        today = now.date()
 
+        s = sun(self._loc.observer, date=today, tzinfo=self._tz)
+        alos = s["dawn"]
+        sunset = s["sunset"]
+
+        # holiday vs Shabbos
+        hd = PHebrewDate.from_pydate(today)
+        is_erev_holiday = (hd.month, hd.day) in self._EREV_DATES
+        candle_time = sunset - timedelta(minutes=self._candle)
+        is_erev_shabbos = (today.weekday() == 4) and (now < candle_time)
+        is_erev = is_erev_holiday or is_erev_shabbos
+
+        self._attr_is_on = is_erev and (alos <= now < candle_time)
+
+        self._attr_extra_state_attributes = {
+            "now": now.isoformat(),
+            "is_erev_holiday": is_erev_holiday,
+            "is_erev_shabbos": is_erev_shabbos,
+            "alos": alos.isoformat(),
+            "candle_time": candle_time.isoformat(),
+            "window_start": alos.isoformat(),
+            "window_end": candle_time.isoformat(),
+        }
+        
 class MeluchaProhibitionSensor(BinarySensorEntity):
     """True from candle-lighting until havdalah on Shabbos & multi-day Yom Tov."""
 
@@ -214,78 +321,6 @@ class MeluchaProhibitionSensor(BinarySensorEntity):
             "in_window":      in_window,
         }
 
-class ErevHolidaySensor(BinarySensorEntity):
-    """True on specific Erev‐days from alos ha-shachar until candle-lighting."""
-
-    _attr_name = "Molad Yiddish Erev"
-    _attr_unique_id = "molad_yiddish_erev"
-    _attr_icon = "mdi:weather-sunset-up"
-
-    # (Hebrew month, day) of Erev‐Yom‐Tov dates in the Hebrew calendar
-    _EREV_DATES = {
-        (6, 29),  # ערב ראש השנה
-        (7, 9),   # ערב יום כיפור
-        (7, 14),  # ערב סוכות
-        (7, 21),  # הושענא רבה
-        (9, 24),  # ערב חנוכה
-        (1, 14),  # ערב פסח
-        (3, 5),   # ערב שבועות
-    }
-
-    def __init__(self, hass: HomeAssistant, candle_offset: int) -> None:
-        super().__init__()
-        self.hass = hass
-        self._candle = candle_offset
-        self._tz = ZoneInfo(hass.config.time_zone)
-        self._loc = LocationInfo(
-            latitude=hass.config.latitude,
-            longitude=hass.config.longitude,
-            timezone=hass.config.time_zone,
-        )
-        # poll every minute for precise on/off
-        async_track_time_interval(hass, self.async_update, timedelta(minutes=1))
-        self._attr_extra_state_attributes: dict[str, any] = {}
-
-    async def async_update(self, now: datetime | None = None) -> None:
-        # 1) normalize to local timezone
-        now = (now or datetime.now(self._tz)).astimezone(self._tz)
-        today = now.date()
-
-        # 2) get zmanim
-        s = sun(self._loc.observer, date=today, tzinfo=self._tz)
-        alos = s["dawn"]
-        sunset = s["sunset"]
-
-        # 3) is today an Erev‐Yom‐Tov day?
-        hd = PHebrewDate.from_pydate(today)
-        is_erev_holiday = (hd.month, hd.day) in self._EREV_DATES
-
-        # 4) also treat every Friday before candle-lighting as Erev Shabbos
-        candle_time = sunset - timedelta(minutes=self._candle)
-        is_erev_shabbos = (today.weekday() == 4) and (now < candle_time)
-
-        # 5) combine both
-        is_erev = is_erev_holiday or is_erev_shabbos
-
-        # 6) window: from dawn until candle-lighting
-        window_start = alos
-        window_end = candle_time
-
-        # 7) determine state
-        self._attr_is_on = is_erev and (window_start <= now < window_end)
-
-        # 8) debug attributes
-        self._attr_extra_state_attributes = {
-            "now": now.isoformat(),
-            "is_erev_holiday": is_erev_holiday,
-            "is_erev_shabbos": is_erev_shabbos,
-            "alos": alos.isoformat(),
-            "candle_time": candle_time.isoformat(),
-            "window_start": window_start.isoformat(),
-            "window_end": window_end.isoformat(),
-        }
-
-
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -304,3 +339,4 @@ async def async_setup_entry(
         entities.append(HolidayAttributeBinarySensor(hass, name))
 
     async_add_entities(entities, update_before_add=True)
+
