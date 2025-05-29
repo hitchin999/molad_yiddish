@@ -18,6 +18,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.event import (
     async_track_time_interval,
+    async_track_state_change_event,
     async_track_time_change,
     async_track_sunset,
 )
@@ -43,6 +44,10 @@ SLUG_OVERRIDES: dict[str, str] = {
     "סוכות א׳":              "sukkot_1",
     "סוכות ב׳":              "sukkot_2",
     "סוכות א׳ וב׳":           "sukkot_1_2",
+    "א׳ דחול המועד סוכות":     "chol_hamoed_sukkot_1",
+    "ב׳ דחול המועד סוכות":     "chol_hamoed_sukkot_2",
+    "ג׳ דחול המועד סוכות":      "chol_hamoed_sukkot_3",
+    "ד׳ דחול המועד סוכות":      "chol_hamoed_sukkot_4",    
     "חול המועד סוכות":       "chol_hamoed_sukkot",
     "הושענא רבה":            "hoshanah_rabbah",
     "שמיני עצרת":            "shemini_atzeret",
@@ -92,7 +97,15 @@ class HolidayAttributeBinarySensor(BinarySensorEntity):
         self._attr_unique_id = f"yiddish_holiday_{slug}"
         self.entity_id = f"binary_sensor.yiddish_holiday_{slug}"
         self._attr_icon = "mdi:checkbox-marked-circle-outline"
-        async_track_time_interval(hass, self.async_update, timedelta(minutes=1))
+        self._attr_extra_state_attributes = {}
+
+    async def async_added_to_hass(self) -> None:
+        # run once immediately…
+        await self.async_update()
+        # …and then every minute thereafter
+        async_track_time_interval(
+            self.hass, self.async_update, timedelta(minutes=1)
+        )
 
     async def async_update(self, now: datetime | None = None) -> None:
         state = self.hass.states.get("sensor.molad_yiddish_holiday")
