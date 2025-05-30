@@ -352,7 +352,7 @@ class UpcomingShabbosMevorchimSensor(BinarySensorEntity):
 
 
 class RoshChodeshTodaySensor(SensorEntity):
-    """True during each day of Rosh Chodesh; shows א׳/ב׳ when there are two days."""
+    """True during each day of Rosh Chodesh; shows א׳/ב׳ when there are two days."""
 
     _attr_name = "Rosh Chodesh Today Yiddish"
     _attr_unique_id = "rosh_chodesh_today_yiddish"
@@ -374,24 +374,24 @@ class RoshChodeshTodaySensor(SensorEntity):
         # Immediate update
         await self.async_update()
 
-        # Hourly refresh
+        # Hourly refresh (runs on the event loop, so safe)
         async_track_time_interval(
             self.hass,
-            lambda _now: self.hass.async_create_task(self.async_update()),
+            lambda now: self.hass.async_create_task(self.async_update()),
             timedelta(hours=1),
         )
 
-        # Anytime the main molad sensor changes
+        # Anytime the main molad sensor changes — use the thread-safe scheduler
         async_track_state_change_event(
             self.hass,
             "sensor.molad_yiddish",
-            lambda _event: self.async_schedule_update_ha_state(),
+            lambda _event: self.schedule_update_ha_state(),
         )
 
-        # Sunset + havdalah offset
+        # Sunset + havdalah offset (also safe via create_task)
         async_track_sunset(
             self.hass,
-            lambda _now: self.hass.async_create_task(self.async_update()),
+            lambda now: self.hass.async_create_task(self.async_update()),
             offset=timedelta(minutes=self._havdalah_offset),
         )
 
@@ -399,11 +399,10 @@ class RoshChodeshTodaySensor(SensorEntity):
     # Core calculation
     # ──────────────────────────────
     async def async_update(self, _now: datetime | None = None) -> None:
-        """Compute whether *now* is inside any Rosh‑Chodesh interval."""
+        """Compute whether *now* is inside any Rosh-Chodesh interval."""
         tz = ZoneInfo(self.hass.config.time_zone)
         now = _now or datetime.now(tz)
 
-        # Pull data from master molad sensor
         main = self.hass.states.get("sensor.molad_yiddish")
         attr = main.attributes if main else {}
         nf_list = attr.get("rosh_chodesh_nightfall") or []
@@ -411,18 +410,23 @@ class RoshChodeshTodaySensor(SensorEntity):
 
         # Convert strings → datetime
         nf_datetimes: list[datetime] = [
-            dt if isinstance(dt, datetime) else datetime.fromisoformat(dt) for dt in nf_list
+            dt if isinstance(dt, datetime) else datetime.fromisoformat(dt)
+            for dt in nf_list
         ]
 
-        # Determine active index (None when not Rosh Chodesh)
+        # Find which Rosh Chodesh period (if any) is active
         active_index: int | None = None
         for i, start in enumerate(nf_datetimes):
-            end = nf_datetimes[i + 1] if i + 1 < len(nf_datetimes) else start + timedelta(days=1)
+            end = (
+                nf_datetimes[i + 1]
+                if i + 1 < len(nf_datetimes)
+                else start + timedelta(days=1)
+            )
             if start <= now < end:
                 active_index = i
                 break
 
-        # Build display value
+        # Build the display string
         if active_index is not None:
             if len(nf_datetimes) == 1:
                 val = f"ראש חודש {month}"
@@ -435,7 +439,7 @@ class RoshChodeshTodaySensor(SensorEntity):
         self._attr_native_value = val
 
     # ──────────────────────────────
-    # Availability (HA shows entity grayed‑out when False)
+    # Availability
     # ──────────────────────────────
     @property
     def available(self) -> bool:
